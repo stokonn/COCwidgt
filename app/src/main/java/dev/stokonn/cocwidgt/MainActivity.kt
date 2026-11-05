@@ -29,6 +29,7 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import dev.stokonn.cocwidgt.data.VillageExportParser
 import dev.stokonn.cocwidgt.security.TokenStore
 import dev.stokonn.cocwidgt.sync.SyncWorker
 import dev.stokonn.cocwidgt.widget.CocWidget
@@ -45,6 +46,7 @@ class MainActivity : ComponentActivity() {
             var tag by remember { mutableStateOf(prefs.getString("player_tag", "").orEmpty()) }
             var apiToken by remember { mutableStateOf("") }
             var tokenConfigured by remember { mutableStateOf(tokenStore.read() != null) }
+            var importStatus by remember { mutableStateOf("Import from Clash of Clans → Settings → More Settings → Data Export.") }
 
             MaterialTheme {
                 Scaffold { contentPadding ->
@@ -89,6 +91,26 @@ class MainActivity : ComponentActivity() {
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) { Text("Save settings") }
+                        Text("VILLAGE UPGRADES", style = MaterialTheme.typography.titleMedium)
+                        Text("In Clash of Clans: Settings → More Settings → Data Export. Copy the JSON export, then paste it here.")
+                        Button(
+                            onClick = {
+                                val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                val raw = clipboard.primaryClip?.getItemAt(0)?.coerceToText(this@MainActivity)?.toString().orEmpty()
+                                try {
+                                    val village = VillageExportParser.parse(raw)
+                                    village.save(this@MainActivity)
+                                    prefs.edit().putString("player_tag", village.tag).apply()
+                                    tag = village.tag
+                                    importStatus = "Imported ${village.jobs.size} active upgrades · TH${village.townHall} · ${village.tag}"
+                                    lifecycleScope.launch { CocWidget().updateAll(this@MainActivity) }
+                                } catch (error: Exception) {
+                                    importStatus = error.message ?: "Import failed."
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Paste & import village JSON") }
+                        Text(importStatus, style = MaterialTheme.typography.bodySmall)
                         Button(
                             onClick = {
                                 WorkManager.getInstance(this@MainActivity).enqueueUniqueWork(
