@@ -20,6 +20,7 @@ import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
 import androidx.glance.layout.padding
+import androidx.glance.layout.width
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
@@ -84,7 +85,9 @@ private fun UpgradeRow(name:String,level:Int,time:String,progress:Float) {
    Text(time,style=TextStyle(color=ColorProvider(Gold)))
   }
   Row(GlanceModifier.fillMaxWidth().height(6.dp).background(Track).cornerRadius(4.dp)) {
-   Spacer(GlanceModifier.fillMaxWidth(progress.coerceIn(0.02f,1f)).height(6.dp).background(Green).cornerRadius(4.dp))
+   repeat(20) { index ->
+    Spacer(GlanceModifier.width(7.dp).height(6.dp).background(if(index < (progress * 20).toInt()) Green else Track))
+   }
   }
  }
 }
