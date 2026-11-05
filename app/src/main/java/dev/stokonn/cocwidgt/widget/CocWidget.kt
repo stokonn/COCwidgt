@@ -25,83 +25,67 @@ import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import androidx.compose.ui.unit.dp
 import dev.stokonn.cocwidgt.MainActivity
+import dev.stokonn.cocwidgt.data.VillageSnapshot
 import java.text.DateFormat
 import java.util.Date
 
-private val Panel = Color(0xFF49352B)
-private val Gold = Color(0xFFF0CE78)
-private val White = Color(0xFFFFF8EC)
-private val Muted = Color(0xFFD6C5B2)
-private val Green = Color(0xFF83C85B)
+private val Panel=Color(0xFF654B3C)
+private val Gold=Color(0xFFFFD66E)
+private val White=Color(0xFFFFF8EC)
+private val Muted=Color(0xFFD6C5B2)
+private val Green=Color(0xFF83C85B)
+private val Track=Color(0xFF302219)
 
-class CocWidget : GlanceAppWidget() {
-    override suspend fun provideGlance(context: Context, id: GlanceId) {
-        provideContent {
-            val context = LocalContext.current
-            val settings = context.getSharedPreferences("cocwidgt", Context.MODE_PRIVATE)
-            val data = context.getSharedPreferences("cocwidgt_player", Context.MODE_PRIVATE)
-            val tag = settings.getString("player_tag", null)?.ifBlank { null } ?: "SET PLAYER TAG"
-            val name = data.getString("name", null)
-            val th = data.getInt("town_hall", -1)
-            val trophies = data.getInt("trophies", -1)
-            val exp = data.getInt("exp_level", -1)
-            val heroes = data.getString("heroes", "").orEmpty().split("|").filter { it.isNotBlank() }
-            val syncedAt = data.getLong("synced_at", 0L)
-            val error = data.getString("sync_error", "").orEmpty()
-
-            Column(
-                modifier = GlanceModifier.fillMaxSize().background(Panel).cornerRadius(22.dp)
-                    .padding(14.dp).clickable(actionStartActivity<MainActivity>()),
-                verticalAlignment = Alignment.Vertical.Top
-            ) {
-                Row(
-                    modifier = GlanceModifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.Vertical.CenterVertically
-                ) {
-                    Column {
-                        Text(name ?: tag, style = TextStyle(color = ColorProvider(White)))
-                        Text(buildString {
-                            append(tag)
-                            if (th > 0) append("  ·  TH $th")
-                        }, style = TextStyle(color = ColorProvider(Gold)))
-                    }
-                    Text("OPEN", style = TextStyle(color = ColorProvider(Gold)))
-                }
-                Spacer(GlanceModifier.height(10.dp))
-                Text("PLAYER", style = TextStyle(color = ColorProvider(Gold)))
-                WidgetRow("Trophies", if (trophies >= 0) trophies.toString() else "—")
-                WidgetRow("Experience", if (exp >= 0) "Level $exp" else "—")
-                Spacer(GlanceModifier.height(7.dp))
-                Text("HEROES", style = TextStyle(color = ColorProvider(Gold)))
-                if (heroes.isEmpty()) {
-                    Text("Waiting for first sync", style = TextStyle(color = ColorProvider(Muted)))
-                } else {
-                    heroes.take(4).forEach { hero ->
-                        WidgetRow(hero.substringBefore(" · "), hero.substringAfter(" · ", "—"))
-                    }
-                }
-                Spacer(GlanceModifier.height(8.dp))
-                if (error.isNotBlank()) Text(error, style = TextStyle(color = ColorProvider(Gold)))
-                val syncLabel = if (syncedAt > 0) {
-                    "Synced ${DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(syncedAt))}"
-                } else "Not synced yet"
-                Text(syncLabel, style = TextStyle(color = ColorProvider(Muted)))
-            }
-        }
+class CocWidget:GlanceAppWidget() {
+ override suspend fun provideGlance(context:Context,id:GlanceId) {
+  provideContent {
+   val ctx=LocalContext.current
+   val profile=ctx.getSharedPreferences("cocwidgt_player",Context.MODE_PRIVATE)
+   val village=VillageSnapshot.load(ctx)
+   val tag=village?.tag?:profile.getString("tag",null)?:profile.getString("player_tag",null)?:"SET PLAYER TAG"
+   val playerName=profile.getString("name",null)
+   val th=village?.townHall?.takeIf{it>0}?:profile.getInt("town_hall",-1)
+   val trophies=profile.getInt("trophies",-1)
+   val exp=profile.getInt("exp_level",-1)
+   val now=System.currentTimeMillis()
+   val jobs=village?.jobs.orEmpty().filter{it.remainingMs(now)>0}.sortedBy{it.remainingMs(now)}
+   Column(GlanceModifier.fillMaxSize().background(Panel).cornerRadius(22.dp).padding(12.dp)
+    .clickable(actionStartActivity<MainActivity>()),verticalAlignment=Alignment.Vertical.Top) {
+    Row(GlanceModifier.fillMaxWidth(),verticalAlignment=Alignment.Vertical.CenterVertically) {
+     Column { Text(playerName?:village?.name?.takeIf{it.isNotBlank()}?:tag,style=TextStyle(color=ColorProvider(White)))
+      Text("$tag  ${if(th>0) "TH$th" else ""}",style=TextStyle(color=ColorProvider(Gold))) }
+     Text("↻ Sync",style=TextStyle(color=ColorProvider(Gold)))
     }
+    Spacer(GlanceModifier.height(8.dp))
+    if(village==null) {
+     Text("IMPORT VILLAGE JSON",style=TextStyle(color=ColorProvider(Gold)))
+     Text("In game: Settings → More Settings → Data Export",style=TextStyle(color=ColorProvider(White)))
+     Text("Open COCwidgt and paste your export.",style=TextStyle(color=ColorProvider(Muted)))
+    } else {
+     Text("BUILDERS ${village.builders}/6",style=TextStyle(color=ColorProvider(Gold)))
+     jobs.filter{it.section=="Builders"||it.section=="Builder Base"}.take(7).forEach{UpgradeRow(it.name,it.level,it.countdown(now),it.progress(now))}
+     Text("LAB & PETS",style=TextStyle(color=ColorProvider(Gold)))
+     jobs.filter{it.section=="Laboratory"||it.section=="Pets"||it.section=="Star Laboratory"}.take(3)
+      .forEach{UpgradeRow(it.name,it.level,it.countdown(now),it.progress(now))}
+     Text("Export ${DateFormat.getDateTimeInstance(DateFormat.SHORT,DateFormat.SHORT).format(Date(village.exportedAt))}",
+      style=TextStyle(color=ColorProvider(Muted)))
+    }
+    if(trophies>=0||exp>=0)Text("Trophies ${if(trophies>=0)trophies else "—"}  ·  XP ${if(exp>=0)exp else "—"}",style=TextStyle(color=ColorProvider(White)))
+    Text("Tap to open · local countdowns",style=TextStyle(color=ColorProvider(Muted)))
+   }
+  }
+ }
 }
-
 @androidx.compose.runtime.Composable
-private fun WidgetRow(label: String, value: String) {
-    Row(
-        modifier = GlanceModifier.fillMaxWidth().padding(vertical = 3.dp),
-        verticalAlignment = Alignment.Vertical.CenterVertically
-    ) {
-        Text(label, style = TextStyle(color = ColorProvider(White)))
-        Text(value, style = TextStyle(color = ColorProvider(Green)))
-    }
+private fun UpgradeRow(name:String,level:Int,time:String,progress:Float) {
+ Column(GlanceModifier.fillMaxWidth().padding(vertical=3.dp)) {
+  Row(GlanceModifier.fillMaxWidth(),verticalAlignment=Alignment.Vertical.CenterVertically) {
+   Text("$name → $level",style=TextStyle(color=ColorProvider(White)))
+   Text(time,style=TextStyle(color=ColorProvider(Gold)))
+  }
+  Row(GlanceModifier.fillMaxWidth().height(6.dp).background(Track).cornerRadius(4.dp)) {
+   Spacer(GlanceModifier.fillMaxWidth(progress.coerceIn(0.02f,1f)).height(6.dp).background(Green).cornerRadius(4.dp))
+  }
+ }
 }
-
-class CocWidgetReceiver : GlanceAppWidgetReceiver() {
-    override val glanceAppWidget: GlanceAppWidget = CocWidget()
-}
+class CocWidgetReceiver:GlanceAppWidgetReceiver(){override val glanceAppWidget:GlanceAppWidget=CocWidget()}
