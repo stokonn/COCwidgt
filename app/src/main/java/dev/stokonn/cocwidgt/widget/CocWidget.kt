@@ -19,12 +19,12 @@ import androidx.glance.layout.padding
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
-import androidx.glance.Color
+import androidx.compose.ui.graphics.Color
+import androidx.glance.unit.dp
 import androidx.glance.LocalContext
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.layout.defaultWeight
-import androidx.glance.layout.width
 import dev.stokonn.cocwidgt.MainActivity
 
 private val Panel = Color(0xFF49352B)
@@ -49,11 +49,11 @@ class CocWidget : GlanceAppWidget() {
                     .cornerRadius(22)
                     .padding(14.dp)
                     .clickable(actionStartActivity<MainActivity>()),
-                verticalAlignment = Alignment.Vertical.Top
+                verticalAlignment = Alignment.Top
             ) {
                 Row(
                     modifier = GlanceModifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.Vertical.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = GlanceModifier.defaultWeight()) {
                         Text(tag, style = TextStyle(color = ColorProvider(White)))
