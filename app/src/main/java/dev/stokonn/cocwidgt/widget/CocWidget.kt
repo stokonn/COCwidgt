@@ -16,7 +16,6 @@ import androidx.glance.layout.Alignment
 import androidx.glance.layout.Column
 import androidx.glance.layout.Row
 import androidx.glance.layout.Spacer
-import androidx.glance.layout.defaultWeight
 import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
@@ -59,7 +58,7 @@ class CocWidget : GlanceAppWidget() {
                     modifier = GlanceModifier.fillMaxWidth(),
                     verticalAlignment = Alignment.Vertical.CenterVertically
                 ) {
-                    Column(modifier = GlanceModifier.defaultWeight()) {
+                    Column {
                         Text(name ?: tag, style = TextStyle(color = ColorProvider(White)))
                         Text(buildString {
                             append(tag)
@@ -81,7 +80,7 @@ class CocWidget : GlanceAppWidget() {
                         WidgetRow(hero.substringBefore(" · "), hero.substringAfter(" · ", "—"))
                     }
                 }
-                Spacer(GlanceModifier.defaultWeight())
+                Spacer(GlanceModifier.height(8.dp))
                 if (error.isNotBlank()) Text(error, style = TextStyle(color = ColorProvider(Gold)))
                 val syncLabel = if (syncedAt > 0) {
                     "Synced ${DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(syncedAt))}"
@@ -98,7 +97,7 @@ private fun WidgetRow(label: String, value: String) {
         modifier = GlanceModifier.fillMaxWidth().padding(vertical = 3.dp),
         verticalAlignment = Alignment.Vertical.CenterVertically
     ) {
-        Text(label, modifier = GlanceModifier.defaultWeight(), style = TextStyle(color = ColorProvider(White)))
+        Text(label, style = TextStyle(color = ColorProvider(White)))
         Text(value, style = TextStyle(color = ColorProvider(Green)))
     }
 }
