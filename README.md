@@ -2,12 +2,14 @@
 
 Native Android home-screen widget for Clash of Clans player data.
 
-**Current version:** 0.2.0
+**Current version:** 0.3.0
 
 ## Features
 
 - Kotlin + Jetpack Compose settings screen
 - Resizable Jetpack Glance home-screen widget
+- Import active upgrade timers from the in-game village JSON export
+- Local countdowns and progress indicators for imported builders, research and pets
 - Player Tag configuration
 - Official Clash of Clans API player-profile request
 - Player name, Town Hall, trophies, XP and hero levels
