@@ -24,7 +24,7 @@ import androidx.glance.layout.padding
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
-import androidx.glance.unit.dp
+import androidx.compose.ui.unit.dp
 import dev.stokonn.cocwidgt.MainActivity
 import java.text.DateFormat
 import java.util.Date
@@ -66,7 +66,7 @@ class CocWidget : GlanceAppWidget() {
                             if (th > 0) append("  ·  TH $th")
                         }, style = TextStyle(color = ColorProvider(Gold)))
                     }
-                    Text("↻ SYNC", style = TextStyle(color = ColorProvider(Gold)))
+                    Text("OPEN", style = TextStyle(color = ColorProvider(Gold)))
                 }
                 Spacer(GlanceModifier.height(10.dp))
                 Text("PLAYER", style = TextStyle(color = ColorProvider(Gold)))
