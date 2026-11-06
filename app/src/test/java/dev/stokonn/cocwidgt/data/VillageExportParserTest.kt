@@ -32,6 +32,13 @@ class VillageExportParserTest {
         assertNull("Unknown total upgrade duration must not produce a fake percentage", job.progress(timestamp * 1000L))
     }
 
+    @Test fun catalogueNameWinsOverUntrustedExportLabel() {
+        val village = VillageExportParser.parse(export(upgrades = """[{"data":1000008,"name":"Item 123","lvl":2,"timer":60}]"""))
+        assertEquals("Cannon", village.jobs.single().name)
+        assertTrue(GameCatalogue.artworkResourceNames(1000008).any { it.contains("cannon") })
+        assertTrue(GameCatalogue.artworkResourceNames(987654321).isEmpty())
+    }
+
     @Test fun unknownIdsAreExplicitAndNeverFabricated() {
         val village = VillageExportParser.parse(export(upgrades = """[{"data":987654321,"lvl":1,"timer":60}]"""))
         assertEquals("Unknown game item (ID 987654321)", village.jobs.single().name)

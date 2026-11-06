@@ -32,9 +32,9 @@ The token is encrypted at rest with AES-GCM using an Android Keystore key. API r
 
 ## Catalogue and visual assets
 
-`GameCatalogue.kt` maps the supported export IDs to their known English game names and categories. Unknown IDs are retained and named explicitly; the app never invents entity names. The exported stable ID is persisted with each active job. The current build uses small category glyphs and original color/layout styling; it does not bundle or represent third-party artwork as official game icons.
+`GameCatalogue.kt` maps supported export IDs to their known English game names, categories and artwork resources. The widget shows selected building, defence, trap, troop, siege, hero, pet and spell fan assets from ClashKingAssets. Unknown IDs are named explicitly and use a neutral fallback; known entities without a matching licensed asset also use that fallback. Export-provided labels do not override catalogue names. The catalogue is a maintained subset, so unsupported IDs are never guessed.
 
-Names and game identifiers are used to identify game entities. This project contains no extracted game artwork. Supercell marks and game content remain the property of Supercell. See [Supercell Fan Content Policy](https://supercell.com/en/fan-content-policy/). Mapping sources, attribution and licensing notes are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The sample export structure and timer behavior are described in public village export guides such as [ClashClock's import guide](https://clashclock.com/guides/user-guide/import-your-village) and [data and timer notes](https://clashclock.com/guides/how-it-works); the implementation is not affiliated with those projects.
+Names and game identifiers are used to identify game entities. Supercell marks and game content remain the property of Supercell. COCwidgt is an unofficial fan app and is not endorsed by Supercell. See [Supercell Fan Content Policy](https://supercell.com/en/fan-content-policy/). Mapping sources, asset attribution and license details are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The sample export structure and timer behavior are described in public village export guides such as [ClashClock's import guide](https://clashclock.com/guides/user-guide/import-your-village) and [data and timer notes](https://clashclock.com/guides/how-it-works); the implementation is not affiliated with those projects.
 
 ## Build and checks
 
@@ -61,8 +61,7 @@ The workflow fails before the build if any secret is missing, verifies the APK s
 
 ## Known limitations
 
-- The catalogue is a maintained subset, not a complete dump of every game entity or current level. The app labels unrecognized IDs rather than guessing.
-- Icons are category glyphs, not official entity artwork.
+- The catalogue and artwork set are maintained subsets. Unsupported or unmapped entities remain explicit and use a neutral icon fallback.
 - Upgrade totals are not present in the export; accurate countdowns are available, but progress percentages are intentionally omitted unless a known total duration is added later.
 - Export data is a manual snapshot. The official API cannot refresh building levels or live upgrade timers.
 - API key IP allowlisting may make sync unavailable on changing networks.

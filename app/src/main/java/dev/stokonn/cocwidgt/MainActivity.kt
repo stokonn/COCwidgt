@@ -63,6 +63,7 @@ class MainActivity : ComponentActivity() {
                     ) {
                         Text("COCwidgt", style = MaterialTheme.typography.headlineLarge)
                         Text("CLASH OF CLANS · VILLAGE COMPANION", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                        Text("Unofficial fan app. Not endorsed by Supercell.", style = MaterialTheme.typography.bodySmall)
                         OutlinedTextField(
                             value = tag,
                             onValueChange = { input -> tag = input.uppercase().filter { it.isLetterOrDigit() || it == '#' } },

@@ -6,6 +6,8 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
+import androidx.glance.Image
+import androidx.glance.ImageProvider
 import androidx.glance.LocalContext
 import androidx.glance.LocalSize
 import androidx.glance.action.actionStartActivity
@@ -24,10 +26,12 @@ import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
 import androidx.glance.layout.padding
+import androidx.glance.layout.size
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import dev.stokonn.cocwidgt.MainActivity
+import dev.stokonn.cocwidgt.data.GameCatalogue
 import dev.stokonn.cocwidgt.data.VillageJob
 import dev.stokonn.cocwidgt.data.VillageSnapshot
 import java.text.DateFormat
@@ -129,19 +133,36 @@ private fun SectionHeading(title: String, trailing: String) {
 
 @androidx.compose.runtime.Composable
 private fun UpgradeRow(job: VillageJob, dense: Boolean, oneLine: Boolean = false) {
-    val icon = when (job.iconKey) {
-        "hero" -> "♛"; "troop", "siege" -> "⚔"; "spell" -> "✦"; "pet" -> "◆"; "defence" -> "⌖"; "trap" -> "!"; else -> "⌂"
-    }
+    val context = LocalContext.current
+    val iconId = GameCatalogue.artworkResourceNames(job.dataId)
+        .firstNotNullOfOrNull { context.resources.getIdentifier(it, "drawable", context.packageName).takeIf { id -> id != 0 } }
     if (oneLine) {
-        Text("$icon  ${job.name}  → ${job.level}  ·  ${job.countdown()}", maxLines = 1,
-            modifier = GlanceModifier.fillMaxWidth().background(Panel).cornerRadius(8.dp).padding(horizontal = 8.dp, vertical = 4.dp),
-            style = TextStyle(color = ColorProvider(Cream)))
+        Row(GlanceModifier.fillMaxWidth().background(Panel).cornerRadius(8.dp).padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.Vertical.CenterVertically) {
+            EntityArtwork(iconId, job.name, 28.dp)
+            Text("${job.name}  →  ${job.level}  ·  ${job.countdown()}", maxLines = 1,
+                modifier = GlanceModifier.defaultWeight().padding(start = 6.dp), style = TextStyle(color = ColorProvider(Cream)))
+        }
     } else {
-        Column(GlanceModifier.fillMaxWidth().background(Panel).cornerRadius(10.dp).padding(horizontal = 8.dp, vertical = if (dense) 4.dp else 6.dp)) {
-            Text("$icon  ${job.name}  →  ${job.level}", maxLines = 1, style = TextStyle(color = ColorProvider(Cream)))
-            Text("${if (dense) "" else "${job.section.uppercase()}  ·  "}${job.countdown()}", maxLines = 1, style = TextStyle(color = ColorProvider(Green)))
+        Row(GlanceModifier.fillMaxWidth().background(Panel).cornerRadius(10.dp).padding(horizontal = 8.dp, vertical = if (dense) 4.dp else 6.dp),
+            verticalAlignment = Alignment.Vertical.CenterVertically) {
+            EntityArtwork(iconId, job.name, 32.dp)
+            Column(GlanceModifier.defaultWeight().padding(start = 8.dp)) {
+                Text("${job.name}  →  ${job.level}", maxLines = 1, style = TextStyle(color = ColorProvider(Cream)))
+                Text("${if (dense) "" else "${job.section.uppercase()}  ·  "}${job.countdown()}", maxLines = 1, style = TextStyle(color = ColorProvider(Green)))
+            }
         }
         Spacer(GlanceModifier.height(if (dense) 3.dp else 5.dp))
+    }
+}
+
+@androidx.compose.runtime.Composable
+private fun EntityArtwork(resourceId: Int?, name: String, size: androidx.compose.ui.unit.Dp) {
+    if (resourceId != null) {
+        Image(ImageProvider(resourceId), contentDescription = name, modifier = GlanceModifier.size(size))
+    } else {
+        Text("?", modifier = GlanceModifier.size(size).background(Background).cornerRadius(8.dp).padding(6.dp),
+            style = TextStyle(color = ColorProvider(Gold)))
     }
 }
 

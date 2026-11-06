@@ -92,8 +92,8 @@ object VillageExportParser {
                 require(dataId >= 0) { "An upgrade entry is missing its stable game data ID." }
                 val entity = GameCatalogue.resolve(dataId)
                 val actualSection = if (entity.category == GameCategory.UNKNOWN) "Unknown item" else section
-                val exportName = item.optString("name").takeIf { it.isNotBlank() } ?: entity.name
-                jobs += VillageJob("$key:$i", exportName, actualSection, item.optInt("lvl") + 1,
+                // The ID is authoritative. Export-provided display text may be absent or stale.
+                jobs += VillageJob("$key:$i", entity.name, actualSection, item.optInt("lvl") + 1,
                     stamp, secondsRemaining * 1000L, item.optBoolean("extra"), dataId, entity.iconKey)
             }
         }
