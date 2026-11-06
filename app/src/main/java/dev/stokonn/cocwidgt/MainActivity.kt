@@ -8,17 +8,21 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -48,14 +52,17 @@ class MainActivity : ComponentActivity() {
             var tokenConfigured by remember { mutableStateOf(tokenStore.read() != null) }
             var importStatus by remember { mutableStateOf("Import from Clash of Clans → Settings → More Settings → Data Export.") }
 
-            MaterialTheme {
-                Scaffold { contentPadding ->
+            MaterialTheme(colorScheme = darkColorScheme(
+                primary = Color(0xFFFFD36B), secondary = Color(0xFF8BCB5A), background = Color(0xFF302119),
+                surface = Color(0xFF493528), onPrimary = Color(0xFF39271D), onBackground = Color(0xFFFFF2D8), onSurface = Color(0xFFFFF2D8)
+            )) {
+                Scaffold(containerColor = MaterialTheme.colorScheme.background) { contentPadding ->
                     Column(
-                        modifier = Modifier.fillMaxSize().padding(contentPadding).padding(24.dp),
+                        modifier = Modifier.fillMaxSize().padding(contentPadding).verticalScroll(rememberScrollState()).padding(24.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
                         Text("COCwidgt", style = MaterialTheme.typography.headlineLarge)
-                        Text("Clash of Clans · Widget setup")
+                        Text("CLASH OF CLANS · VILLAGE COMPANION", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                         OutlinedTextField(
                             value = tag,
                             onValueChange = { input -> tag = input.uppercase().filter { it.isLetterOrDigit() || it == '#' } },
@@ -93,6 +100,7 @@ class MainActivity : ComponentActivity() {
                         ) { Text("Save settings") }
                         Text("VILLAGE UPGRADES", style = MaterialTheme.typography.titleMedium)
                         Text("In Clash of Clans: Settings → More Settings → Data Export. Copy the JSON export, then paste it here.")
+                        Text("Upgrade timers come from your export snapshot. The official API provides profile details, not live upgrade timers.", style = MaterialTheme.typography.bodySmall)
                         Button(
                             onClick = {
                                 val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
