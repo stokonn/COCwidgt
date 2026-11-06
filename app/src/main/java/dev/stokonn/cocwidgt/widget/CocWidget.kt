@@ -31,7 +31,7 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import dev.stokonn.cocwidgt.MainActivity
-import dev.stokonn.cocwidgt.data.GameCatalogue
+import dev.stokonn.cocwidgt.data.GameArtwork
 import dev.stokonn.cocwidgt.data.VillageJob
 import dev.stokonn.cocwidgt.data.VillageSnapshot
 import java.text.DateFormat
@@ -133,9 +133,7 @@ private fun SectionHeading(title: String, trailing: String) {
 
 @androidx.compose.runtime.Composable
 private fun UpgradeRow(job: VillageJob, dense: Boolean, oneLine: Boolean = false) {
-    val context = LocalContext.current
-    val iconId = GameCatalogue.artworkResourceNames(job.dataId)
-        .firstNotNullOfOrNull { context.resources.getIdentifier(it, "drawable", context.packageName).takeIf { id -> id != 0 } }
+    val iconId = GameArtwork.drawableResId(job.dataId)
     if (oneLine) {
         Row(GlanceModifier.fillMaxWidth().background(Panel).cornerRadius(8.dp).padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.Vertical.CenterVertically) {

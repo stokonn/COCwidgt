@@ -35,8 +35,8 @@ class VillageExportParserTest {
     @Test fun catalogueNameWinsOverUntrustedExportLabel() {
         val village = VillageExportParser.parse(export(upgrades = """[{"data":1000008,"name":"Item 123","lvl":2,"timer":60}]"""))
         assertEquals("Cannon", village.jobs.single().name)
-        assertTrue(GameCatalogue.artworkResourceNames(1000008).any { it.contains("cannon") })
-        assertTrue(GameCatalogue.artworkResourceNames(987654321).isEmpty())
+        assertTrue(GameArtwork.drawableResId(1000008) != null)
+        assertNull(GameArtwork.drawableResId(987654321))
     }
 
     @Test fun unknownIdsAreExplicitAndNeverFabricated() {

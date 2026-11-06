@@ -1,6 +1,5 @@
 package dev.stokonn.cocwidgt.data
 
-import java.util.Locale
 
 /** Stable IDs and English names observed in the public village export schema. Unknown IDs stay explicit. */
 enum class GameCategory { BUILDING, DEFENCE, HERO, TROOP, SPELL, PET, TRAP, SIEGE, UNKNOWN }
@@ -107,37 +106,4 @@ object GameCatalogue {
     fun find(id: Long): GameEntity? = entries[id]
     fun resolve(id: Long): GameEntity = find(id) ?: GameEntity(id, "Unknown game item (ID $id)", GameCategory.UNKNOWN)
 
-    /** Candidate drawable names for original ClashKingAssets artwork bundled in drawable-nodpi. */
-    fun artworkResourceNames(id: Long): List<String> {
-        val entity = find(id) ?: return emptyList()
-        val slug = when (entity.name) {
-            "P.E.K.K.A" -> "pekka"
-            "Power P.E.K.K.A" -> "power_pekka"
-            "L.A.S.S.I" -> "lassi"
-            "Builder's Hut" -> "builder_s_hut"
-            "B.O.B Control", "B.O.B Control Hut" -> "bob_control"
-            "O.T.T.O's Outpost" -> "otto_s_outpost"
-            "Multi-Gear Tower" -> "multi_gear_tower"
-            "Multi-Archer Tower" -> "multi_archer_tower"
-            else -> entity.name.lowercase(Locale.ROOT)
-                .replace(Regex("[^a-z0-9]+"), "_").trim('_')
-        }
-        return when (entity.category) {
-            GameCategory.HERO -> listOf("coc_heroes_${slug}_icon")
-            GameCategory.PET -> listOf("coc_pets_${slug}_icon")
-            GameCategory.TROOP, GameCategory.SIEGE -> listOf("coc_troops_${slug}_icon")
-            GameCategory.SPELL -> listOf("coc_spells_${slug}")
-            GameCategory.BUILDING, GameCategory.DEFENCE -> listOf(
-                "coc_buildings_home_village_${slug}_level_1",
-                "coc_buildings_builder_base_${slug}_level_1"
-            )
-            GameCategory.TRAP -> listOf(
-                "coc_traps_home_village_${slug}_level_1",
-                "coc_traps_builder_base_${slug}_level_1",
-                "coc_buildings_home_village_${slug}_level_1",
-                "coc_buildings_builder_base_${slug}_level_1"
-            )
-            GameCategory.UNKNOWN -> emptyList()
-        }
-    }
 }
