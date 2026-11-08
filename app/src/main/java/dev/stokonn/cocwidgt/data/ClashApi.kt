@@ -20,7 +20,8 @@ data class PlayerSnapshot(
 
 class ClashApi(private val context: Context) {
     fun fetchPlayer(tag: String, token: String): PlayerSnapshot {
-        val encodedTag = URLEncoder.encode(tag.removePrefix("#"), "UTF-8")
+        val requestedTag = PlayerIdentity.normalizeTag(tag) ?: throw IllegalArgumentException("Enter a valid Player Tag.")
+        val encodedTag = URLEncoder.encode(requestedTag.removePrefix("#"), "UTF-8")
         val connection = (URL("https://api.clashofclans.com/v1/players/%23$encodedTag").openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             connectTimeout = 15_000
@@ -37,6 +38,9 @@ class ClashApi(private val context: Context) {
                 throw ApiException(status, detail?.takeIf { it.isNotBlank() } ?: "HTTP $status")
             }
             val json = JSONObject(body)
+            val responseTag = PlayerIdentity.normalizeTag(json.optString("tag", requestedTag))
+                ?: throw IllegalStateException("Clash API returned an invalid Player Tag.")
+            if (responseTag != requestedTag) throw IllegalStateException("Clash API response does not match the requested Player Tag.")
             val heroes = buildList {
                 val array = json.optJSONArray("heroes") ?: return@buildList
                 for (i in 0 until array.length()) {
@@ -47,8 +51,8 @@ class ClashApi(private val context: Context) {
                 }
             }
             return PlayerSnapshot(
-                name = json.optString("name", "Unknown"),
-                tag = json.optString("tag", tag),
+                name = json.optString("name").trim().takeUnless { it.equals("null", ignoreCase = true) }.orEmpty(),
+                tag = responseTag,
                 townHall = json.takeIf { it.has("townHallLevel") }?.optInt("townHallLevel"),
                 expLevel = json.takeIf { it.has("expLevel") }?.optInt("expLevel"),
                 trophies = json.takeIf { it.has("trophies") }?.optInt("trophies"),
@@ -63,9 +67,11 @@ class ClashApi(private val context: Context) {
     }
 
     fun saveSnapshot(snapshot: PlayerSnapshot) {
+        val normalizedTag = PlayerIdentity.normalizeTag(snapshot.tag)
+            ?: throw IllegalArgumentException("Cannot save a profile without a valid Player Tag.")
         context.getSharedPreferences("cocwidgt_player", Context.MODE_PRIVATE).edit()
-            .putString("name", snapshot.name)
-            .putString("tag", snapshot.tag)
+            .putString("name", snapshot.name.trim())
+            .putString("tag", normalizedTag)
             .putInt("town_hall", snapshot.townHall ?: -1)
             .putInt("exp_level", snapshot.expLevel ?: -1)
             .putInt("trophies", snapshot.trophies ?: -1)

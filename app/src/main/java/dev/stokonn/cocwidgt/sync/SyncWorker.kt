@@ -6,17 +6,18 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import dev.stokonn.cocwidgt.data.ApiException
 import dev.stokonn.cocwidgt.data.ClashApi
+import dev.stokonn.cocwidgt.data.PlayerIdentity
 import dev.stokonn.cocwidgt.security.TokenStore
 import dev.stokonn.cocwidgt.widget.CocWidget
 
 class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         val settings = applicationContext.getSharedPreferences("cocwidgt", Context.MODE_PRIVATE)
-        val tag = settings.getString("player_tag", null)?.trim().orEmpty()
+        val tag = PlayerIdentity.normalizeTag(settings.getString("player_tag", null))
         val token = TokenStore(applicationContext).read()
         val api = ClashApi(applicationContext)
 
-        if (tag.isBlank() || token.isNullOrBlank()) {
+        if (tag == null || token.isNullOrBlank()) {
             api.saveError("Add your Player Tag and API token in app settings.")
             CocWidget().updateAll(applicationContext)
             return Result.failure()

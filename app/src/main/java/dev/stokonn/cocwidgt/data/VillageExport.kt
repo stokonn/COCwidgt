@@ -3,7 +3,6 @@ package dev.stokonn.cocwidgt.data
 import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
-import java.util.Locale
 
 data class VillageJob(
     val id: String,
@@ -38,7 +37,8 @@ data class VillageSnapshot(val tag: String, val name: String, val townHall: Int,
             put("startedAt", job.startedAt); put("durationMs", job.remainingAtExportMs); put("goblin", job.goblin)
             put("dataId", job.dataId); put("iconKey", job.iconKey); put("totalDurationMs", job.totalDurationMs)
         }) }
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("tag", tag).putString("name", name)
+        val normalizedTag = requireNotNull(PlayerIdentity.normalizeTag(tag)) { "Cannot save a village without a valid Player Tag." }
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("tag", normalizedTag).putString("name", name.trim())
             .putInt("townHall", townHall).putInt("builders", builders).putLong("exportedAt", exportedAt)
             .putString("jobs", array.toString()).apply()
     }
@@ -47,7 +47,7 @@ data class VillageSnapshot(val tag: String, val name: String, val townHall: Int,
         const val PREFS = "cocwidgt_village"
         fun load(context: Context): VillageSnapshot? {
             val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            val tag = prefs.getString("tag", null) ?: return null
+            val tag = PlayerIdentity.normalizeTag(prefs.getString("tag", null)) ?: return null
             val array = runCatching { JSONArray(prefs.getString("jobs", "[]")) }.getOrNull() ?: JSONArray()
             val jobs = (0 until array.length()).mapNotNull { i -> runCatching {
                 val j = array.getJSONObject(i)
@@ -63,14 +63,14 @@ data class VillageSnapshot(val tag: String, val name: String, val townHall: Int,
 
 object VillageExportParser {
     private val sections = listOf("buildings" to "Builders", "traps" to "Builders", "heroes" to "Builders",
-        "units" to "Laboratory", "siege_machines" to "Laboratory", "spells" to "Laboratory", "pets" to "Pets",
+        "units" to "Laboratory", "siege_machines" to "Laboratory", "spells" to "Laboratory", "equipment" to "Equipment", "hero_equipment" to "Equipment", "pets" to "Pets",
         "buildings2" to "Builder Base", "traps2" to "Builder Base", "heroes2" to "Builder Base", "units2" to "Star Laboratory")
 
     fun parse(raw: String): VillageSnapshot {
         require(raw.length <= 1_000_000) { "Export is too large (maximum 1 MB)." }
         val root = runCatching { JSONObject(raw.trim()) }.getOrElse { throw IllegalArgumentException("This is not valid village export JSON.") }
-        val tag = root.optString("tag").trim().uppercase(Locale.ROOT)
-        require(tag.matches(Regex("#[A-Z0-9]{3,20}"))) { "Export is missing a valid Player Tag." }
+        val tag = PlayerIdentity.normalizeTag(root.optString("tag"))
+        require(tag != null) { "Export is missing a valid Player Tag." }
         require(root.has("timestamp")) { "Export is missing its creation timestamp." }
         val timestampSeconds = root.optLong("timestamp", -1L)
         require(timestampSeconds > 0L && timestampSeconds <= Long.MAX_VALUE / 1000L) { "Export contains an invalid timestamp." }
@@ -98,7 +98,7 @@ object VillageExportParser {
             }
         }
         require(jobs.size <= 300) { "Export contains too many active upgrades." }
-        return VillageSnapshot(tag, root.optString("name", ""), hall, builders, stamp, jobs)
+        return VillageSnapshot(tag, root.optString("name").trim().takeUnless { it.equals("null", ignoreCase = true) }.orEmpty(), hall, builders, stamp, jobs)
     }
 
     private fun findLevel(array: JSONArray, id: Long): Int = (0 until array.length()).firstNotNullOfOrNull { i ->

@@ -1,12 +1,12 @@
 # COCwidgt
 
-COCwidgt is an unofficial Android home-screen companion for Clash of Clans. Version **0.4.0** (`versionCode` 4) combines the official player profile API with local village export data. It is not affiliated with Supercell.
+COCwidgt is an unofficial Android home-screen companion for Clash of Clans. Version **0.5.0** (`versionCode` 5) combines the official player profile API with local village export data. It is not affiliated with Supercell.
 
 ## What it shows
 
 - A resizable Glance widget that adapts content to its actual width and height.
 - Player name, tag and Town Hall from the official API and/or export.
-- Active builder, laboratory, pet and Builder Base upgrades with local countdowns.
+- Active builder, laboratory, hero equipment, pet and Builder Base upgrades with local countdowns.
 - Export age, including a stale marker after 24 hours.
 - Import parsing by stable game data ID, with explicit `Unknown game item (ID …)` labels for IDs without a catalogue entry.
 - Optional Supercell API profile sync; the API does not provide live upgrade timers.
@@ -44,13 +44,14 @@ Requirements: JDK 17, Android SDK 35, Gradle 8.9. From the project root:
 ./gradlew testDebugUnitTest
 ./gradlew lintDebug
 ./gradlew assembleDebug
+./gradlew assembleRelease
 ```
 
 Android Studio can also open and build the project.
 
 ## Signed release
 
-Release automation runs when `v0.4.0` is pushed. Configure these GitHub Actions repository secrets before tagging:
+The v0.4.0 release workflow is retained for that existing release. A v0.5.0 release must wait until the widget redesign is reviewed on a phone. Configure these GitHub Actions repository secrets before a future signed release:
 
 - `RELEASE_KEYSTORE_BASE64`: base64-encoded Android release keystore.
 - `RELEASE_STORE_PASSWORD`: keystore password.

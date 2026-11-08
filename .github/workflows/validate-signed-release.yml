@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       target_sha:
-        description: Full commit SHA on feature/v2-village-import-upgrade-widget to validate
+        description: Full commit SHA on codex/v0.5.0-debloat-redesign to validate
         required: true
         type: string
 
@@ -46,10 +46,10 @@ jobs:
         run: |
           set -euo pipefail
           git fetch --no-tags origin \
-            refs/heads/feature/v2-village-import-upgrade-widget:refs/remotes/origin/feature/v2-village-import-upgrade-widget
+            refs/heads/codex/v0.5.0-debloat-redesign:refs/remotes/origin/codex/v0.5.0-debloat-redesign
           git cat-file -e "$TARGET_SHA^{commit}"
           git merge-base --is-ancestor "$TARGET_SHA" \
-            refs/remotes/origin/feature/v2-village-import-upgrade-widget
+            refs/remotes/origin/codex/v0.5.0-debloat-redesign
           printf 'sha=%s\n' "$TARGET_SHA" >> "$GITHUB_OUTPUT"
           {
             printf 'Validation target: `%s`\n\n' "$TARGET_SHA"
@@ -136,14 +136,14 @@ jobs:
           badging="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk")"
           package_line="$(printf '%s\n' "$badging" | sed -n '/^package:/p')"
           printf '%s\n' "$package_line"
-          grep -Fq "package: name='dev.stokonn.cocwidgt' versionCode='4' versionName='0.4.0'" <<< "$package_line"
+          grep -Fq "package: name='dev.stokonn.cocwidgt' versionCode='5' versionName='0.5.0'" <<< "$package_line"
 
           apk_sha256="$(sha256sum "$apk" | cut -d' ' -f1)"
           {
             printf 'Validation target: `%s`\n\n' "$TARGET_SHA"
             printf 'APK: `app-release.apk`\n\n'
             printf 'Package: `dev.stokonn.cocwidgt`\n\n'
-            printf 'Version: `0.4.0` (code `4`)\n\n'
+            printf 'Version: `0.5.0` (code `5`)\n\n'
             printf 'Signature verification: passed with Build Tools 35.0.0 `apksigner`.\n\n'
             printf 'SHA-256: `%s`\n' "$apk_sha256"
           } >> "$GITHUB_STEP_SUMMARY"
