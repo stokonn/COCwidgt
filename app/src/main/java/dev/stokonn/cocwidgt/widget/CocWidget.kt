@@ -2,8 +2,9 @@ package dev.stokonn.cocwidgt.widget
 
 import android.content.Context
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.Image
@@ -27,6 +28,8 @@ import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
 import androidx.glance.layout.padding
 import androidx.glance.layout.size
+import androidx.glance.layout.width
+import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
@@ -35,6 +38,7 @@ import dev.stokonn.cocwidgt.data.GameArtwork
 import dev.stokonn.cocwidgt.data.PlayerIdentity
 import dev.stokonn.cocwidgt.data.VillageJob
 import dev.stokonn.cocwidgt.data.VillageSnapshot
+import dev.stokonn.cocwidgt.sync.WidgetRefreshWorker
 import java.text.DateFormat
 import java.util.Date
 
@@ -46,20 +50,26 @@ private val Cream = Color(0xFFFFF2D8)
 private val Muted = Color(0xFFCDB9A2)
 private val Green = Color(0xFF9BCB70)
 
+/**
+ * Exact-size widget: every render reads the real launcher size, groups active upgrades into
+ * categories, lays them out in as many columns as the width allows and shows as many rows as
+ * the height fits. Countdowns and progress are computed from absolute timestamps on each render;
+ * periodic re-renders are scheduled through WorkManager / the system update period.
+ */
 class CocWidget : GlanceAppWidget() {
-    override val sizeMode = SizeMode.Responsive(setOf(
-        DpSize(180.dp, 110.dp), DpSize(250.dp, 180.dp), DpSize(320.dp, 220.dp),
-        DpSize(360.dp, 280.dp), DpSize(480.dp, 360.dp), DpSize(480.dp, 600.dp)
-    ))
+    override val sizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         provideContent {
             val ctx = LocalContext.current
             val size = LocalSize.current
+            val widthDp = size.width.value.toInt()
+            val heightDp = size.height.value.toInt()
             val village = VillageSnapshot.load(ctx)
             val profile = ctx.getSharedPreferences("cocwidgt_player", Context.MODE_PRIVATE)
-            val profileTag = PlayerIdentity.normalizeTag(profile.getString("tag", null) ?: profile.getString("player_tag", null))
-            val expectedTag = PlayerIdentity.normalizeTag(village?.tag ?: ctx.getSharedPreferences("cocwidgt", Context.MODE_PRIVATE).getString("player_tag", null)) ?: profileTag
+            val profileTag = PlayerIdentity.firstValidTag(profile.getString("tag", null), profile.getString("player_tag", null))
+            val settings = ctx.getSharedPreferences("cocwidgt", Context.MODE_PRIVATE)
+            val expectedTag = PlayerIdentity.firstValidTag(village?.tag, settings.getString("player_tag", null), profileTag)
             val tag = expectedTag ?: profileTag ?: "ADD PLAYER TAG"
             val playerName = PlayerIdentity.matchingName(expectedTag, profileTag, profile.getString("name", null), village?.tag, village?.name) ?: "Player profile"
             val profileMatches = expectedTag != null && profileTag == expectedTag
@@ -67,15 +77,27 @@ class CocWidget : GlanceAppWidget() {
             val apiSyncedAt = if (profileMatches) profile.getLong("synced_at", 0L) else 0L
             val apiError = if (profileMatches) profile.getString("sync_error", "").orEmpty() else ""
             val now = System.currentTimeMillis()
-            val selection = WidgetContentPlanner.select(village?.jobs.orEmpty(), size.width.value.toInt(), size.height.value.toInt(), now)
+            val selection = WidgetContentPlanner.select(village?.jobs.orEmpty(), widthDp, heightDp, now)
             val compact = selection.compact
+            val contentPadding = if (compact) 8 else 13
+            val contentWidth = widthDp - contentPadding * 2
+            val renderedColumns = selection.columns.filter { it.isNotEmpty() }
+            val renderedColumnCount = renderedColumns.size.coerceAtLeast(1)
+            val columnWidth = if (renderedColumnCount == 1) {
+                contentWidth
+            } else {
+                (contentWidth - WidgetContentPlanner.COLUMN_GAP_DP * (renderedColumnCount - 1)) / renderedColumnCount
+            }
+            val cardPadding = if (renderedColumnCount == 1) 10 else 8
+            val cardBarWidth = columnWidth - cardPadding * 2
+            val compactBarWidth = (contentWidth - 25).coerceAtLeast(40)
 
             Column(
                 GlanceModifier.fillMaxSize().background(Background).cornerRadius(20.dp)
-                    .padding(if (compact) 10.dp else 13.dp).clickable(actionStartActivity<MainActivity>()),
+                    .padding(contentPadding.dp).clickable(actionStartActivity<MainActivity>()),
                 verticalAlignment = Alignment.Vertical.Top
             ) {
-                PlayerHeader(playerName, tag, th)
+                PlayerHeader(playerName, tag, th, compact)
                 if (village == null) {
                     Spacer(GlanceModifier.height(6.dp))
                     Text("IMPORT VILLAGE DATA", style = TextStyle(color = ColorProvider(Gold)))
@@ -85,28 +107,53 @@ class CocWidget : GlanceAppWidget() {
                     val activeCount = village.jobs.count { it.remainingMs(now) > 0 }
                     val stale = now - village.exportedAt > 24 * 60 * 60 * 1000L
                     val more = if (selection.hiddenCount > 0) " · +${selection.hiddenCount}" else ""
-                    Text("$activeCount ACTIVE$more${if (stale) " · STALE" else " · EXPORT"}", maxLines = 1, style = TextStyle(color = ColorProvider(Gold)))
-                    selection.items.firstOrNull()?.let { CompactUpgrade(it) }
+                    Text("$activeCount ACTIVE$more${if (stale) " · STALE" else " · EXPORT"}", maxLines = 1,
+                        style = TextStyle(color = ColorProvider(Gold), fontSize = 12.sp))
+                    selection.items.forEach { CompactUpgrade(it, now, compactBarWidth) }
+                    if (selection.items.isEmpty() && selection.hiddenCount == 0) {
+                        Text("NO ACTIVE UPGRADES", maxLines = 1, style = TextStyle(color = ColorProvider(Muted), fontSize = 12.sp))
+                    }
                 } else {
                     Spacer(GlanceModifier.height(7.dp))
-                    selection.items.forEach { UpgradeCard(it, size.width.value >= 420f) }
+                    if (renderedColumns.isEmpty()) {
+                        Text("NO ACTIVE UPGRADES", maxLines = 1, style = TextStyle(color = ColorProvider(Muted), fontSize = 12.sp))
+                    } else {
+                        Row(
+                            GlanceModifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.Vertical.Top
+                        ) {
+                            renderedColumns.forEachIndexed { columnIndex, groups ->
+                                Column(
+                                    GlanceModifier.width(columnWidth.dp)
+                                        .padding(end = if (columnIndex < renderedColumnCount - 1) WidgetContentPlanner.COLUMN_GAP_DP.dp else 0.dp)
+                                ) {
+                                    groups.forEach { group ->
+                                        CategoryHeader(group.category.label, group.items.size)
+                                        group.items.forEach { job ->
+                                            UpgradeCard(job, now, renderedColumnCount > 1, cardPadding, cardBarWidth)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     if (selection.hiddenCount > 0) {
                         Text("+${selection.hiddenCount} more active upgrades · open app", maxLines = 1,
-                            style = TextStyle(color = ColorProvider(Gold)))
+                            style = TextStyle(color = ColorProvider(Gold), fontSize = 12.sp))
                     }
                     Spacer(GlanceModifier.defaultWeight())
                     val stale = now - village.exportedAt > 24 * 60 * 60 * 1000L
                     val exported = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(village.exportedAt))
                     Text("${if (stale) "STALE · " else "EXPORTED · "}$exported", maxLines = 1,
-                        style = TextStyle(color = ColorProvider(if (stale) Gold else Muted)))
-                    if (size.width >= 420.dp && size.height >= 360.dp) {
+                        style = TextStyle(color = ColorProvider(if (stale) Gold else Muted), fontSize = 12.sp))
+                    if (widthDp >= 420 && heightDp >= 360) {
                         val apiStatus = when {
                             !profileMatches -> "API · not synced for this player"
                             apiError.isNotBlank() -> "API · $apiError"
                             apiSyncedAt > 0 -> "API synced · ${DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(apiSyncedAt))}"
                             else -> "API · not synced"
                         }
-                        Text(apiStatus, maxLines = 1, style = TextStyle(color = ColorProvider(Muted)))
+                        Text(apiStatus, maxLines = 1, style = TextStyle(color = ColorProvider(Muted), fontSize = 12.sp))
                     }
                 }
             }
@@ -115,47 +162,97 @@ class CocWidget : GlanceAppWidget() {
 }
 
 @androidx.compose.runtime.Composable
-private fun PlayerHeader(name: String, tag: String, townHall: Int) {
+private fun PlayerHeader(name: String, tag: String, townHall: Int, compact: Boolean) {
     Row(
-        GlanceModifier.fillMaxWidth().background(Frame).cornerRadius(13.dp).padding(horizontal = 10.dp, vertical = 8.dp),
+        GlanceModifier.fillMaxWidth().background(Frame).cornerRadius(13.dp)
+            .padding(horizontal = if (compact) 8.dp else 10.dp, vertical = if (compact) 6.dp else 8.dp),
         verticalAlignment = Alignment.Vertical.CenterVertically
     ) {
         Column(GlanceModifier.defaultWeight()) {
-            Text(name, maxLines = 1, style = TextStyle(color = ColorProvider(Cream)))
+            Text(name, maxLines = 1, style = TextStyle(color = ColorProvider(Cream), fontSize = if (compact) 14.sp else 16.sp))
             Text("$tag${if (townHall > 0) "  ·  TH$townHall" else ""}", maxLines = 1,
-                style = TextStyle(color = ColorProvider(Gold)))
+                style = TextStyle(color = ColorProvider(Gold), fontSize = if (compact) 12.sp else 14.sp))
         }
-        Text("VILLAGE", style = TextStyle(color = ColorProvider(Muted)))
+        Text("VILLAGE", maxLines = 1, style = TextStyle(color = ColorProvider(Muted), fontSize = if (compact) 10.sp else 12.sp))
     }
 }
 
 @androidx.compose.runtime.Composable
-private fun UpgradeCard(job: VillageJob, wide: Boolean) {
-    Row(
-        GlanceModifier.fillMaxWidth().padding(bottom = 5.dp).background(Panel).cornerRadius(11.dp)
-            .padding(horizontal = 8.dp, vertical = if (wide) 5.dp else 7.dp),
-        verticalAlignment = Alignment.Vertical.CenterVertically
+private fun CategoryHeader(label: String, count: Int) {
+    Row(GlanceModifier.fillMaxWidth().padding(bottom = 3.dp), verticalAlignment = Alignment.Vertical.CenterVertically) {
+        Text(label.uppercase(), maxLines = 1,
+            style = TextStyle(color = ColorProvider(Gold), fontSize = 11.sp, fontWeight = FontWeight.Bold))
+        Spacer(GlanceModifier.defaultWeight())
+        Text("$count", maxLines = 1, style = TextStyle(color = ColorProvider(Muted), fontSize = 11.sp))
+    }
+}
+
+@androidx.compose.runtime.Composable
+private fun UpgradeCard(job: VillageJob, now: Long, wide: Boolean, cardPadding: Int, barWidth: Int) {
+    Column(
+        GlanceModifier.fillMaxWidth().padding(bottom = if (wide) 4.dp else 5.dp)
+            .background(Panel).cornerRadius(11.dp)
+            .padding(horizontal = cardPadding.dp, vertical = 3.dp)
     ) {
-        EntityArtwork(job, if (wide) 30.dp else 34.dp)
-        Column(GlanceModifier.defaultWeight().padding(start = 8.dp)) {
-            Text("${job.name}  ·  ${job.level}", maxLines = 1, style = TextStyle(color = ColorProvider(Cream)))
-            Text("${job.section.uppercase()}  ·  ${job.countdown()}", maxLines = 1,
-                style = TextStyle(color = ColorProvider(Green)))
+        Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.Vertical.CenterVertically) {
+            EntityArtwork(job, if (wide) 22.dp else 30.dp)
+            Column(GlanceModifier.defaultWeight().padding(start = 6.dp)) {
+                Text("${job.name}  ·  ${job.level}", maxLines = 1,
+                    style = TextStyle(color = ColorProvider(Cream), fontSize = if (wide) 12.sp else 13.sp))
+                Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.Vertical.CenterVertically) {
+                    Text(job.countdown(now), maxLines = 1,
+                        style = TextStyle(color = ColorProvider(Green), fontSize = if (wide) 11.sp else 12.sp))
+                    if (job.goblin == true) {
+                        Spacer(GlanceModifier.width(5.dp))
+                        Text("GOBLIN", maxLines = 1,
+                            style = TextStyle(color = ColorProvider(Gold), fontSize = 10.sp, fontWeight = FontWeight.Bold))
+                    }
+                }
+            }
+        }
+        Spacer(GlanceModifier.height(if (wide) 2.dp else 3.dp))
+        ProgressBar(barWidth, job.progress(now), if (wide) 3 else 4)
+    }
+}
+
+@androidx.compose.runtime.Composable
+private fun CompactUpgrade(job: VillageJob, now: Long, barWidth: Int) {
+    Row(GlanceModifier.fillMaxWidth().padding(top = 2.dp), verticalAlignment = Alignment.Vertical.CenterVertically) {
+        EntityArtwork(job, 20.dp)
+        Column(GlanceModifier.defaultWeight().padding(start = 5.dp)) {
+            Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.Vertical.CenterVertically) {
+                Text("${job.name} · ${job.countdown(now)}", maxLines = 1, modifier = GlanceModifier.defaultWeight(),
+                    style = TextStyle(color = ColorProvider(Cream), fontSize = 12.sp))
+                if (job.goblin == true) {
+                    Text("G", maxLines = 1,
+                        style = TextStyle(color = ColorProvider(Gold), fontSize = 10.sp, fontWeight = FontWeight.Bold))
+                }
+            }
+            Spacer(GlanceModifier.height(2.dp))
+            ProgressBar(barWidth, job.progress(now), 3)
+        }
+    }
+}
+
+/**
+ * Green progress bar sized from the real widget geometry. Progress comes from the absolute
+ * start/completion timestamps of the upgrade; a null or invalid progress renders no bar
+ * rather than a fake percentage.
+ */
+@androidx.compose.runtime.Composable
+private fun ProgressBar(widthDp: Int, progress: Float?, heightDp: Int) {
+    if (progress == null) return
+    val width: Dp = widthDp.dp
+    val filled = if (progress <= 0f) 0.dp else (width * progress).coerceAtLeast(1.dp)
+    Row(GlanceModifier.width(width).height(heightDp.dp).background(Frame).cornerRadius(2.dp)) {
+        if (filled > 0.dp) {
+            Spacer(GlanceModifier.width(filled).height(heightDp.dp).background(Green).cornerRadius(2.dp))
         }
     }
 }
 
 @androidx.compose.runtime.Composable
-private fun CompactUpgrade(job: VillageJob) {
-    Row(GlanceModifier.fillMaxWidth().padding(top = 3.dp), verticalAlignment = Alignment.Vertical.CenterVertically) {
-        EntityArtwork(job, 23.dp)
-        Text("${job.name} · ${job.countdown()}", maxLines = 1,
-            modifier = GlanceModifier.defaultWeight().padding(start = 5.dp), style = TextStyle(color = ColorProvider(Cream)))
-    }
-}
-
-@androidx.compose.runtime.Composable
-private fun EntityArtwork(job: VillageJob, size: androidx.compose.ui.unit.Dp) {
+private fun EntityArtwork(job: VillageJob, size: Dp) {
     val resourceId = GameArtwork.drawableResId(job.dataId)
     if (resourceId != null) {
         Image(ImageProvider(resourceId), contentDescription = job.name, modifier = GlanceModifier.size(size))
@@ -165,4 +262,16 @@ private fun EntityArtwork(job: VillageJob, size: androidx.compose.ui.unit.Dp) {
     }
 }
 
-class CocWidgetReceiver : GlanceAppWidgetReceiver() { override val glanceAppWidget: GlanceAppWidget = CocWidget() }
+class CocWidgetReceiver : GlanceAppWidgetReceiver() {
+    override val glanceAppWidget: GlanceAppWidget = CocWidget()
+
+    override fun onEnabled(context: Context) {
+        super.onEnabled(context)
+        WidgetRefreshWorker.enqueue(context)
+    }
+
+    override fun onUpdate(context: Context, appWidgetManager: android.appwidget.AppWidgetManager, appWidgetIds: IntArray) {
+        super.onUpdate(context, appWidgetManager, appWidgetIds)
+        WidgetRefreshWorker.enqueue(context)
+    }
+}

@@ -4,6 +4,8 @@ import java.util.Locale
 
 /** Canonical player identity shared by imports, API sync, preferences and widget rendering. */
 object PlayerIdentity {
+    fun firstValidTag(vararg values: String?): String? = values.firstNotNullOfOrNull(::normalizeTag)
+
     fun normalizeTag(value: String?): String? {
         val compact = value.orEmpty().trim().uppercase(Locale.ROOT)
         val body = compact.removePrefix("#")

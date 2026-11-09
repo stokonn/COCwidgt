@@ -4,14 +4,15 @@ COCwidgt is an unofficial Android home-screen companion for Clash of Clans. Vers
 
 ## What it shows
 
-- A resizable Glance widget that adapts content to its actual width and height.
-- Player name, tag and Town Hall from the official API and/or export.
-- Active builder, laboratory, hero equipment, pet and Builder Base upgrades with local countdowns.
-- Export age, including a stale marker after 24 hours.
+- A resizable Glance widget that adapts content to its actual width and height: one, two or three category-ordered columns depending on the real widget size.
+- Player name, tag and Town Hall from the official API and/or export. The nickname comes from an API profile sync that now runs automatically when a token is configured.
+- Active builder, laboratory, hero equipment, pet and Builder Base upgrades with local countdowns, including Goblin Worker upgrades marked with a **GOBLIN** badge.
+- Progress bars derived from real timestamps, plus export age and a stale marker after 24 hours.
 - Import parsing by stable game data ID, with explicit `Unknown game item (ID …)` labels for IDs without a catalogue entry.
 - Optional Supercell API profile sync; the API does not provide live upgrade timers.
+- Periodic widget refresh (15 minutes) so countdowns and progress bars keep advancing without per-second updates.
 
-The village export supplies levels and remaining upgrade timers. An export timer is the **remaining seconds at the export timestamp**; the app calculates the finish instant as `timestamp + timer`. Old exports therefore show elapsed timers as ready. The export does not include each upgrade's original total duration, so COCwidgt does not display a made-up percentage. The UI reserves progress bars for data with a known total duration.
+The village export supplies levels and remaining upgrade timers. An export timer is the **remaining seconds at the export timestamp**; the app calculates the finish instant as `timestamp + timer`. Old exports therefore show elapsed timers as ready. The export does not include each upgrade's original total duration, so COCwidgt does not show a made-up percentage of a guessed total: progress bars run from the **first moment the running timer was observed** (the first import that saw the upgrade) to the computed finish instant. Re-importing the same running upgrade keeps that first observation, so progress never jumps backwards; a genuinely changed timer or a different player tag starts a fresh window. When timestamps are missing or invalid, no progress bar is shown.
 
 ## Import village data
 
@@ -63,6 +64,8 @@ The workflow fails before the build if any secret is missing, verifies the APK s
 ## Known limitations
 
 - The catalogue and artwork set are maintained subsets. Unsupported or unmapped entities remain explicit and use a neutral icon fallback.
-- Upgrade totals are not present in the export; accurate countdowns are available, but progress percentages are intentionally omitted unless a known total duration is added later.
+- Upgrade totals are not present in the export. Countdowns are accurate, and progress bars use the first-observed start to the absolute finish instant; no percentage is computed against a guessed total duration.
+- Progress bars appear only for upgrades first imported while running. An upgrade imported for the first time after it started cannot know its true start, so its bar begins at the first import.
+- Widget countdown refresh relies on WorkManager's periodic worker (15 minutes) and the launcher's own update period; exact cadence is launcher-dependent and needs device testing.
 - Export data is a manual snapshot. The official API cannot refresh building levels or live upgrade timers.
 - API key IP allowlisting may make sync unavailable on changing networks.

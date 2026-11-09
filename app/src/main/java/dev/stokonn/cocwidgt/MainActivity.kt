@@ -26,6 +26,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -49,6 +50,7 @@ import dev.stokonn.cocwidgt.data.VillageExportParser
 import dev.stokonn.cocwidgt.data.VillageSnapshot
 import dev.stokonn.cocwidgt.security.TokenStore
 import dev.stokonn.cocwidgt.sync.SyncWorker
+import dev.stokonn.cocwidgt.sync.WidgetRefreshWorker
 import dev.stokonn.cocwidgt.widget.CocWidget
 import kotlinx.coroutines.launch
 import java.text.DateFormat
@@ -66,15 +68,16 @@ private val Green = Color(0xFF9BCB70)
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WidgetRefreshWorker.enqueue(this)
         val settings = getSharedPreferences("cocwidgt", MODE_PRIVATE)
         val player = getSharedPreferences("cocwidgt_player", MODE_PRIVATE)
         val village = VillageSnapshot.load(this)
         val tokenStore = TokenStore(this)
-        val initialTag = PlayerIdentity.normalizeTag(village?.tag
-            ?: settings.getString("player_tag", null) ?: player.getString("tag", null)).orEmpty()
-        val initialName = PlayerIdentity.matchingName(initialTag, player.getString("tag", null), player.getString("name", null), village?.tag, village?.name)
+        val savedProfileTag = PlayerIdentity.firstValidTag(player.getString("tag", null), player.getString("player_tag", null))
+        val initialTag = PlayerIdentity.firstValidTag(village?.tag, settings.getString("player_tag", null), savedProfileTag).orEmpty()
+        val initialName = PlayerIdentity.matchingName(initialTag, savedProfileTag, player.getString("name", null), village?.tag, village?.name)
         val initialTownHall = village?.townHall?.takeIf { it > 0 }
-            ?: player.getInt("town_hall", -1).takeIf { initialTag.isNotBlank() && PlayerIdentity.normalizeTag(player.getString("tag", null)) == initialTag && it > 0 }
+            ?: player.getInt("town_hall", -1).takeIf { initialTag.isNotBlank() && savedProfileTag == initialTag && it > 0 }
         val lastUpdate = village?.exportedAt?.takeIf { it > 0L }?.let {
             "Village imported ${DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(it))}"
         } ?: "No village export imported yet"
@@ -89,13 +92,48 @@ class MainActivity : ComponentActivity() {
             var tokenConfigured by remember { mutableStateOf(tokenStore.read() != null) }
             var importMessage by remember { mutableStateOf("") }
             var importError by remember { mutableStateOf(false) }
-            var busy by remember { mutableStateOf(false) }
+            var importing by remember { mutableStateOf(false) }
+            var syncing by remember { mutableStateOf(false) }
             var syncState by remember { mutableStateOf(
-                if (initialTag.isNotBlank() && PlayerIdentity.normalizeTag(player.getString("tag", null)) == initialTag && player.getLong("synced_at", 0L) > 0L) "Profile synced"
-                else if (initialTag.isNotBlank() && PlayerIdentity.normalizeTag(player.getString("tag", null)) == initialTag) player.getString("sync_error", null) ?: "Profile not synced"
+                if (initialTag.isNotBlank() && savedProfileTag == initialTag && player.getLong("synced_at", 0L) > 0L) "Profile synced"
+                else if (initialTag.isNotBlank() && savedProfileTag == initialTag) player.getString("sync_error", null) ?: "Profile not synced"
                 else "Profile not synced for this tag"
             ) }
             var villageStatus by remember { mutableStateOf(lastUpdate) }
+
+            fun startProfileSync(targetTag: String) {
+                syncing = true
+                syncState = "Profile sync in progress"
+                enqueuePlayerSync(targetTag) { info ->
+                    if (info.state.isFinished) {
+                        syncing = false
+                        val apiTag = PlayerIdentity.firstValidTag(player.getString("tag", null), player.getString("player_tag", null))
+                        if (info.state == WorkInfo.State.SUCCEEDED && apiTag == PlayerIdentity.normalizeTag(targetTag)) {
+                            profileName = PlayerIdentity.matchingName(targetTag, apiTag, player.getString("name", null), exportTag, exportName) ?: "Player profile"
+                            townHall = player.getInt("town_hall", -1).takeIf { it > 0 }
+                            syncState = "Profile synced"
+                        } else {
+                            syncState = player.getString("sync_error", null) ?: "Profile sync failed"
+                        }
+                    }
+                }
+            }
+
+            // The village export carries no player name, so the nickname can only come from the
+            // API profile. Pull it automatically whenever it is missing or older than 6 hours.
+            LaunchedEffect(Unit) {
+                val token = tokenStore.read()
+                val target = PlayerIdentity.firstValidTag(
+                    settings.getString("player_tag", null), player.getString("tag", null), village?.tag
+                )
+                if (!token.isNullOrBlank() && target != null) {
+                    val storedTag = PlayerIdentity.firstValidTag(player.getString("tag", null), player.getString("player_tag", null))
+                    val hasName = storedTag == target && !player.getString("name", null).isNullOrBlank()
+                    val syncedAt = player.getLong("synced_at", 0L)
+                    val stale = syncedAt == 0L || System.currentTimeMillis() - syncedAt > 6 * 60 * 60 * 1000L
+                    if (!hasName || stale) startProfileSync(target)
+                }
+            }
 
             MaterialTheme(colorScheme = darkColorScheme(
                 primary = Gold, secondary = Green, background = Forest, surface = Stone,
@@ -130,28 +168,32 @@ class MainActivity : ComponentActivity() {
                                 SectionTitle("01", "Village data", "Import the latest in-game snapshot")
                                 Text("Copy your village export in Clash of Clans, then import it from the clipboard.", color = Muted, style = MaterialTheme.typography.bodyMedium)
                                 Button(onClick = {
-                                    busy = true
+                                    importing = true
+                                    var syncTag: String? = null
                                     val raw = (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
                                         .primaryClip?.getItemAt(0)?.coerceToText(this@MainActivity)?.toString().orEmpty()
                                     try {
                                         val snapshot = VillageExportParser.parse(raw)
+                                            .withMergedTimers(VillageSnapshot.load(this@MainActivity))
                                         snapshot.save(this@MainActivity)
                                         tag = snapshot.tag
                                         townHall = snapshot.townHall.takeIf { it > 0 }
                                         exportTag = snapshot.tag
                                         exportName = snapshot.name
-                                        profileName = PlayerIdentity.matchingName(snapshot.tag, player.getString("tag", null), player.getString("name", null), snapshot.tag, snapshot.name) ?: "Player profile"
+                                        profileName = PlayerIdentity.matchingName(snapshot.tag, savedProfileTag, player.getString("name", null), snapshot.tag, snapshot.name) ?: "Player profile"
                                         settings.edit().putString("player_tag", snapshot.tag).apply()
                                         villageStatus = "Imported ${DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(snapshot.exportedAt))} · ${snapshot.jobs.size} active upgrades"
                                         importMessage = "Village data imported. Widget updated."
                                         importError = false
+                                        syncTag = snapshot.tag.takeIf { !tokenStore.read().isNullOrBlank() }
                                         lifecycleScope.launch { CocWidget().updateAll(this@MainActivity) }
                                     } catch (error: Exception) {
                                         importMessage = error.message ?: "Import failed. Check the copied JSON."
                                         importError = true
-                                    } finally { busy = false }
-                                }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
-                                    Text(if (busy) "Importing…" else "Paste & import village JSON")
+                                    } finally { importing = false }
+                                    syncTag?.let(::startProfileSync)
+                                }, enabled = !importing && !syncing, modifier = Modifier.fillMaxWidth()) {
+                                    Text(if (importing) "Importing…" else "Paste & import village JSON")
                                 }
                                 if (importMessage.isNotBlank()) Text(importMessage, color = if (importError) MaterialTheme.colorScheme.error else Green, style = MaterialTheme.typography.bodySmall)
                             }
@@ -165,17 +207,19 @@ class MainActivity : ComponentActivity() {
                                     onValueChange = {
                                         tag = it.uppercase().filter { c -> c.isLetterOrDigit() || c == '#' }
                                         val normalized = PlayerIdentity.normalizeTag(tag)
-                                        profileName = PlayerIdentity.matchingName(normalized, player.getString("tag", null), player.getString("name", null), exportTag, exportName) ?: "Player profile"
-                                        if (normalized != PlayerIdentity.normalizeTag(player.getString("tag", null))) syncState = "Profile not synced for this tag"
+                                        val apiTag = PlayerIdentity.firstValidTag(player.getString("tag", null), player.getString("player_tag", null))
+                                        profileName = PlayerIdentity.matchingName(normalized, apiTag, player.getString("name", null), exportTag, exportName) ?: "Player profile"
+                                        if (normalized != apiTag) syncState = "Profile not synced for this tag"
                                     },
                                     label = { Text("Player Tag") }, placeholder = { Text("#Y2099VGPJ") }, singleLine = true,
                                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),
+                                    enabled = !syncing,
                                     modifier = Modifier.fillMaxWidth()
                                 )
                                 OutlinedTextField(
                                     value = apiToken, onValueChange = { apiToken = it },
                                     label = { Text(if (tokenConfigured) "Replace API token (optional)" else "Supercell API token") },
-                                    singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth()
+                                    singleLine = true, enabled = !syncing, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth()
                                 )
                                 Text(if (tokenConfigured) "Token encrypted on this device with Android Keystore." else "Create a developer token and allowlist your public IP.", color = Muted, style = MaterialTheme.typography.bodySmall)
                                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
@@ -201,7 +245,7 @@ class MainActivity : ComponentActivity() {
                                             syncState = "Settings saved"
                                             lifecycleScope.launch { CocWidget().updateAll(this@MainActivity) }
                                         }
-                                    }, modifier = Modifier.weight(1f)) { Text("Save settings") }
+                                    }, enabled = !importing && !syncing, modifier = Modifier.weight(1f)) { Text("Save settings") }
                                     OutlinedButton(onClick = {
                                         val normalized = PlayerIdentity.normalizeTag(tag)
                                         if (normalized == null) {
@@ -218,22 +262,9 @@ class MainActivity : ComponentActivity() {
                                                 tokenConfigured = true
                                             }
                                             settings.edit().putString("player_tag", normalized).apply()
-                                            val request = OneTimeWorkRequestBuilder<SyncWorker>().build()
-                                            WorkManager.getInstance(this@MainActivity).enqueueUniqueWork("cocwidgt-manual-sync", ExistingWorkPolicy.REPLACE, request)
-                                            syncState = "Sync in progress"
-                                            busy = true
-                                            WorkManager.getInstance(this@MainActivity).getWorkInfoByIdLiveData(request.id).observe(this@MainActivity) { info ->
-                                                if (info?.state?.isFinished == true) {
-                                                    busy = false
-                                                    syncState = if (info.state == WorkInfo.State.SUCCEEDED) "Profile synced" else player.getString("sync_error", null) ?: "Sync failed"
-                                                    if (info.state == WorkInfo.State.SUCCEEDED) {
-                                                        profileName = PlayerIdentity.matchingName(tag, player.getString("tag", null), player.getString("name", null), exportTag, exportName) ?: "Player profile"
-                                                        townHall = player.getInt("town_hall", -1).takeIf { it > 0 && PlayerIdentity.normalizeTag(player.getString("tag", null)) == PlayerIdentity.normalizeTag(tag) }
-                                                    }
-                                                }
-                                            }
+                                            startProfileSync(normalized)
                                         }
-                                    }, enabled = !busy, modifier = Modifier.weight(1f)) { Text(if (busy) "Syncing…" else "Sync now") }
+                                    }, enabled = !importing && !syncing, modifier = Modifier.weight(1f)) { Text(if (syncing) "Syncing…" else "Sync now") }
                                 }
                             }
                         }
@@ -243,6 +274,13 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+}
+
+private fun MainActivity.enqueuePlayerSync(tag: String, onUpdate: (WorkInfo) -> Unit) {
+    val request = OneTimeWorkRequestBuilder<SyncWorker>().build()
+    val workManager = WorkManager.getInstance(this)
+    workManager.enqueueUniqueWork("cocwidgt-manual-sync", ExistingWorkPolicy.REPLACE, request)
+    workManager.getWorkInfoByIdLiveData(request.id).observe(this) { info -> info?.let(onUpdate) }
 }
 
 @androidx.compose.runtime.Composable

@@ -3,6 +3,7 @@ package dev.stokonn.cocwidgt.data
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -30,7 +31,10 @@ class VillageExportParserTest {
         assertEquals(28_000_000L, job.dataId)
         assertEquals((timestamp + 3600L) * 1000L, job.finishAt())
         assertTrue(job.remainingMs(timestamp * 1000L) in 3_599_000L..3_600_000L)
-        assertNull("Unknown total upgrade duration must not produce a fake percentage", job.progress(timestamp * 1000L))
+        // Progress is derived from the absolute start and completion timestamps, never invented.
+        assertEquals(0f, job.progress(timestamp * 1000L)!!, 0.001f)
+        assertEquals(1f, job.progress((timestamp + 3600L) * 1000L)!!, 0.001f)
+        assertEquals(0.5f, job.progress((timestamp + 1800L) * 1000L)!!, 0.001f)
     }
 
     @Test fun catalogueNameWinsOverUntrustedExportLabel() {
@@ -59,9 +63,11 @@ class VillageExportParserTest {
         val job = VillageJob("b:0", "Cannon", "Builders", 2, 1_000L, 60_000L, totalDurationMs = 120_000L)
         assertEquals("1m", job.countdown(1_000L))
         assertEquals("Ready", job.countdown(61_000L))
-        assertEquals(0.5f, job.progress(1_000L)!!, 0.001f)
+        assertEquals(0f, job.progress(1_000L)!!, 0.001f)
+        assertEquals(0.5f, job.progress(31_000L)!!, 0.001f)
         assertEquals(1f, job.progress(61_000L)!!, 0.001f)
         assertFalse(job.remainingMs(61_000L) > 0)
+        assertTrue(job.isComplete(61_000L))
     }
 
     @Test fun playerTagsAreCanonicalAndNamesNeverCrossPlayerBoundaries() {
@@ -70,11 +76,20 @@ class VillageExportParserTest {
         assertNull(PlayerIdentity.normalizeTag("##Y2099VGPJ"))
         assertNull(PlayerIdentity.normalizeTag("bad tag!"))
         assertNull(PlayerIdentity.normalizeTag("#YA 123"))
+        assertEquals("#Y2099VGPJ", PlayerIdentity.firstValidTag("##invalid", "  y2099vgpj "))
+        assertEquals("#OTHER123", PlayerIdentity.firstValidTag("##bad", "#other123"))
         assertEquals("API Name", PlayerIdentity.matchingName("#Y2099VGPJ", " y2099vgpj ", " API Name ", "#Y2099VGPJ", "Export Name"))
         assertEquals("Export Name", PlayerIdentity.matchingName("#Y2099VGPJ", "#OTHER123", "Wrong Player", "#Y2099VGPJ", "Export Name"))
         assertNull(PlayerIdentity.matchingName("#Y2099VGPJ", "#OTHER123", "Wrong Player", "#OTHER123", "Other Player Export"))
+        assertNull(PlayerIdentity.matchingName("#Y2099VGPJ", "#OTHER123", "Wrong Player", "#OTHER123", ""))
         assertEquals("Export Name", PlayerIdentity.matchingName("#Y2099VGPJ", "#Y2099VGPJ", "   ", "#Y2099VGPJ", " Export Name "))
         assertNull(PlayerIdentity.matchingName("#Y2099VGPJ", "#Y2099VGPJ", " ", "#Y2099VGPJ", " "))
+        // Persistence flow: stored API profile name is preferred once the profile tag matches.
+        assertEquals("Stored Name", PlayerIdentity.matchingName("#Y2099VGPJ", "#Y2099VGPJ", " Stored Name ", null, null))
+        // No API profile yet → the import name is used instead of a placeholder.
+        assertEquals("Export Name", PlayerIdentity.matchingName("#Y2099VGPJ", null, null, "#Y2099VGPJ", "Export Name"))
+        // No source at all → neutral fallback, never the Player Tag posing as a name.
+        assertNull(PlayerIdentity.matchingName("#Y2099VGPJ", null, null, "#Y2099VGPJ", "   "))
     }
 
     @Test fun mapsMultipleConcurrentUpgradesAcrossVillageSections() {
@@ -124,18 +139,74 @@ class VillageExportParserTest {
         assertTrue(System.currentTimeMillis() - village.exportedAt > 24 * 60 * 60 * 1000L)
     }
 
-    @Test fun widgetSelectionScalesWithAvailableSpaceAndReportsHiddenRows() {
-        val jobs = (0 until 16).map { index ->
-            VillageJob("job:$index", "Upgrade $index", if (index % 4 == 0) "Builder Base" else "Builders", 2, 1_000L, 86_400_000L, dataId = index.toLong())
-        }
-        val now = 1_000L
-        val compact = WidgetContentPlanner.select(jobs, 180, 110, now)
-        val medium = WidgetContentPlanner.select(jobs, 360, 280, now)
-        val wide = WidgetContentPlanner.select(jobs, 480, 600, now)
-        assertEquals(1, compact.items.size)
-        assertEquals(15, compact.hiddenCount)
-        assertTrue(medium.items.size > compact.items.size)
-        assertTrue(wide.items.size > medium.items.size)
-        assertEquals(jobs.size, wide.items.size + wide.hiddenCount)
+    @Test fun goblinWorkerUpgradesAreParsedStoredCategorizedAndKept() {
+        val timestamp = System.currentTimeMillis() / 1000L
+        val raw = """{"tag":"#Y2099VGPJ","timestamp":$timestamp,
+            "buildings":[{"data":1000008,"lvl":5,"timer":600,"extra":true},{"data":1000009,"lvl":5,"timer":900,"extra":1}],
+            "traps":[{"data":12000000,"lvl":3,"timer":300,"extra":false}],
+            "units":[{"data":4000000,"lvl":9,"timer":1200,"extra":"true"}],
+            "heroes":[{"data":28000000,"lvl":95,"timer":2400}],
+            "pets":[{"data":73000000,"lvl":1,"timer":1500,"extra":true}],
+            "buildings2":[{"data":1000044,"lvl":8,"timer":1800,"extra":true}]}"""
+        val village = VillageExportParser.parse(raw)
+        // No valid upgrade is silently discarded, whatever its flag or section.
+        assertEquals(7, village.jobs.size)
+        fun job(dataId: Long) = village.jobs.single { it.dataId == dataId }
+        assertEquals(true, job(1000008L).goblin)
+        assertEquals(true, job(1000009L).goblin)
+        assertEquals(false, job(12000000L).goblin)
+        assertEquals(true, job(4000000L).goblin)
+        assertNull("Flag absent means unknown, never guessed", job(28000000L).goblin)
+        assertNull("Pets never carry the flag", job(73000000L).goblin)
+        assertNull("Builder Base never carries the flag", job(1000044L).goblin)
+        // Goblin Workers stay in their real upgrade category and are only marked.
+        assertEquals(UpgradeCategory.BUILDINGS, job(1000008L).category)
+        assertEquals(UpgradeCategory.TROOPS, job(4000000L).category)
+        assertEquals(UpgradeCategory.HEROES, job(28000000L).category)
+    }
+
+    @Test fun unknownSectionsAreKeptInsteadOfDiscarded() {
+        val timestamp = System.currentTimeMillis() / 1000L
+        val raw = """{"tag":"#Y2099VGPJ","timestamp":$timestamp,
+            "buildings":[],"guardians":[{"data":987654999,"lvl":2,"timer":600}]}"""
+        val village = VillageExportParser.parse(raw)
+        val guardian = village.jobs.single()
+        assertEquals(987654999L, guardian.dataId)
+        assertEquals("Unknown game item (ID 987654999)", guardian.name)
+        assertEquals(UpgradeCategory.OTHER, guardian.category)
+    }
+
+    @Test fun reimportKeepsFirstObservedStartForTheSameRunningUpgrade() {
+        val first = VillageSnapshot("#Y2099VGPJ", "", 16, 5, 1_000_000L, listOf(
+            VillageJob("buildings:0", "Cannon", "Builders", 5, 1_000_000L, 600_000L, dataId = 1000008L)))
+        val second = VillageSnapshot("#Y2099VGPJ", "", 16, 5, 1_300_000L, listOf(
+            VillageJob("buildings:0", "Cannon", "Builders", 5, 1_300_000L, 300_000L, dataId = 1000008L)))
+        assertEquals(first.jobs.single().finishAt(), second.jobs.single().finishAt())
+        val merged = second.withMergedTimers(first)
+        assertEquals(1_000_000L, merged.jobs.single().startedAt)
+        assertEquals(0.5f, merged.jobs.single().progress(1_300_000L)!!, 0.001f)
+    }
+
+    @Test fun changedTimerOrTagStartsAFreshProgressWindow() {
+        val first = VillageSnapshot("#Y2099VGPJ", "", 16, 5, 1_000_000L, listOf(
+            VillageJob("buildings:0", "Cannon", "Builders", 5, 1_000_000L, 600_000L, dataId = 1000008L)))
+        // Deadline moved by hours: a genuinely different timer, not export jitter.
+        val drifted = VillageSnapshot("#Y2099VGPJ", "", 16, 5, 1_300_000L, listOf(
+            VillageJob("buildings:0", "Cannon", "Builders", 5, 1_300_000L, 3_600_000L, dataId = 1000008L)))
+        assertEquals(1_300_000L, drifted.withMergedTimers(first).jobs.single().startedAt)
+        val otherPlayer = first.copy(tag = "#OTHER123")
+        assertSame(otherPlayer, otherPlayer.withMergedTimers(first))
+        assertSame(first, first.withMergedTimers(null))
+    }
+
+    @Test fun goblinFlagSurvivesReimportOnlyWhileTheExportKeepsQuiet() {
+        val first = VillageSnapshot("#Y2099VGPJ", "", 16, 5, 1_000_000L, listOf(
+            VillageJob("buildings:0", "Cannon", "Builders", 5, 1_000_000L, 600_000L, goblin = true, dataId = 1000008L)))
+        val silent = VillageSnapshot("#Y2099VGPJ", "", 16, 5, 1_300_000L, listOf(
+            VillageJob("buildings:0", "Cannon", "Builders", 5, 1_300_000L, 300_000L, goblin = null, dataId = 1000008L)))
+        val explicit = VillageSnapshot("#Y2099VGPJ", "", 16, 5, 1_300_000L, listOf(
+            VillageJob("buildings:0", "Cannon", "Builders", 5, 1_300_000L, 300_000L, goblin = false, dataId = 1000008L)))
+        assertEquals(true, silent.withMergedTimers(first).jobs.single().goblin)
+        assertEquals(false, explicit.withMergedTimers(first).jobs.single().goblin)
     }
 }
