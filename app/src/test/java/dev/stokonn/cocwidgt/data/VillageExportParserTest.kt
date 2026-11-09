@@ -159,10 +159,14 @@ class VillageExportParserTest {
         assertNull("Flag absent means unknown, never guessed", job(28000000L).goblin)
         assertNull("Pets never carry the flag", job(73000000L).goblin)
         assertNull("Builder Base never carries the flag", job(1000044L).goblin)
-        // Goblin Workers stay in their real upgrade category and are only marked.
-        assertEquals(UpgradeCategory.BUILDINGS, job(1000008L).category)
-        assertEquals(UpgradeCategory.TROOPS, job(4000000L).category)
+        // The goblin flag routes the row into the Goblin / Builder column; the real entity,
+        // level and timer are untouched. Rows without the flag stay in their game category.
+        assertEquals(UpgradeCategory.GOBLIN, job(1000008L).category)
+        assertEquals(UpgradeCategory.GOBLIN, job(4000000L).category)
+        assertEquals(UpgradeCategory.BUILDINGS, job(12000000L).category)
         assertEquals(UpgradeCategory.HEROES, job(28000000L).category)
+        assertEquals(UpgradeCategory.PETS, job(73000000L).category)
+        assertEquals(UpgradeCategory.BUILDINGS, job(1000044L).category)
     }
 
     @Test fun unknownSectionsAreKeptInsteadOfDiscarded() {
@@ -174,6 +178,63 @@ class VillageExportParserTest {
         assertEquals(987654999L, guardian.dataId)
         assertEquals("Unknown game item (ID 987654999)", guardian.name)
         assertEquals(UpgradeCategory.OTHER, guardian.category)
+    }
+
+    @Test fun everyTopLevelUpgradeArrayIsParsedNotOnlyAWhitelist() {
+        val timestamp = System.currentTimeMillis() / 1000L
+        val raw = """{"tag":"#Y2099VGPJ","timestamp":$timestamp,"buildings":[],
+            "house_parts":[{"data":73000001,"lvl":3,"timer":600}],
+            "goblin_research":[{"data":93000001,"lvl":2,"timer":300}],
+            "skins":[{"data":1000008,"lvl":1,"timer":0}]}"""
+        val village = VillageExportParser.parse(raw)
+        // The non-upgrade row (no timer) is skipped; both real upgrades survive with their IDs.
+        assertEquals(2, village.jobs.size)
+        val pet = village.jobs.single { it.dataId == 73000001L }
+        assertEquals("Mighty Yak", pet.name)
+        assertEquals("House Parts", pet.section) // section rendered from the unknown key
+        assertEquals(UpgradeCategory.PETS, pet.category)
+        assertEquals(4, pet.level) // lvl + 1 preserved
+        assertEquals((timestamp + 600L) * 1000L, pet.finishAt())
+        val assistant = village.jobs.single { it.dataId == 93000001L }
+        assertEquals("Lab Assistant", assistant.name)
+        assertEquals("Laboratory", assistant.section) // recognised by the "research" keyword
+        assertEquals(UpgradeCategory.GOBLIN, assistant.category)
+        assertEquals((timestamp + 300L) * 1000L, assistant.finishAt())
+    }
+
+    @Test fun rowsWithoutAnUpgradeShapeAreSkippedInsteadOfFailingTheImport() {
+        val timestamp = System.currentTimeMillis() / 1000L
+        val raw = """{"tag":"#Y2099VGPJ","timestamp":$timestamp,"buildings":[],
+            "boosts":[{"timer":600}],"obstacles":[{"data":1000005,"lvl":1}]}"""
+        val village = VillageExportParser.parse(raw)
+        assertTrue(village.jobs.isEmpty())
+    }
+
+    @Test fun petHouseAndHelperUpgradesLandInTheGoblinAndPetColumns() {
+        val timestamp = System.currentTimeMillis() / 1000L
+        val raw = """{"tag":"#Y2099VGPJ","timestamp":$timestamp,
+            "buildings":[{"data":1000068,"lvl":6,"timer":900}],
+            "helpers":[{"data":93000000,"lvl":3,"timer":600}]}"""
+        val village = VillageExportParser.parse(raw)
+        val petHouse = village.jobs.single { it.dataId == 1000068L }
+        assertEquals("Pet House", petHouse.name)
+        assertEquals(UpgradeCategory.PETS, petHouse.category)
+        assertNull("Helpers never carry the goblin flag", village.jobs.single { it.dataId == 93000000L }.goblin)
+        assertEquals(UpgradeCategory.GOBLIN, village.jobs.single { it.dataId == 93000000L }.category)
+    }
+
+    @Test fun exportWithoutANameStaysNamelessForTheHeaderToResolve() {
+        // Real exports carry no name; the widget must fall back instead of inventing one.
+        val raw = export(upgrades = """[{"data":1000008,"lvl":1,"timer":60}]""")
+            .replace("\"name\":\"Test Village\",", "")
+        val village = VillageExportParser.parse(raw)
+        assertEquals("", village.name)
+        val header = PlayerIdentity.headerState(
+            exportTag = village.tag, exportName = village.name, exportTownHall = village.townHall,
+            settingsTag = null, profile = StoredProfile(null, null, -1, 0L, null),
+        )
+        assertEquals(PlayerHeaderState.FALLBACK_NAME, header.displayName)
+        assertEquals("#Y2099VGPJ", header.expectedTag)
     }
 
     @Test fun reimportKeepsFirstObservedStartForTheSameRunningUpgrade() {

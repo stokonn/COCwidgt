@@ -123,13 +123,19 @@ data class VillageSnapshot(val tag: String, val name: String, val townHall: Int,
 }
 
 object VillageExportParser {
-    private val sections = listOf(
+    /**
+     * Upgrade sections defined explicitly by the export schema, iterated first in a stable
+     * order. Every other top-level JSON array of the export is parsed as well (see
+     * [upgradeSectionKeys]) — a section unknown to this list is never silently dropped.
+     */
+    private val knownSections = listOf(
         "buildings" to "Builders", "traps" to "Builders", "heroes" to "Builders",
         "units" to "Laboratory", "siege_machines" to "Laboratory", "spells" to "Laboratory",
         "equipment" to "Equipment", "hero_equipment" to "Equipment", "pets" to "Pets",
         "guardians" to "Guardians",
         "buildings2" to "Builder Base", "traps2" to "Builder Base", "heroes2" to "Builder Base", "units2" to "Star Laboratory"
     )
+    private val knownLabels = knownSections.toMap()
 
     // The export only attaches the Goblin Worker flag to Home Village upgrades, and never to
     // pets or equipment rows (mirrors how the flag is defined in the export schema).
@@ -150,15 +156,23 @@ object VillageExportParser {
         val hall = findLevel(buildings, 1_000_001L)
         val builders = findCount(buildings, 1_000_015L).coerceIn(0, 6)
         val jobs = mutableListOf<VillageJob>()
-        sections.forEach { (key, section) ->
-            val array = root.optJSONArray(key) ?: return@forEach
+        for (key in upgradeSectionKeys(root)) {
+            val array = root.optJSONArray(key) ?: continue
+            val section = sectionLabel(key)
+            val knownSection = knownLabels.containsKey(key)
             for (i in 0 until array.length()) {
                 val item = array.optJSONObject(i) ?: continue
                 val secondsRemaining = item.optLong("timer", 0L)
                 if (secondsRemaining <= 0) continue
                 require(secondsRemaining <= 366L * 86_400L) { "Upgrade timer is outside the supported range." }
                 val dataId = item.optLong("data", -1L)
-                require(dataId >= 0) { "An upgrade entry is missing its stable game data ID." }
+                if (dataId < 0) {
+                    if (knownSection) throw IllegalArgumentException("An upgrade entry is missing its stable game data ID.")
+                    // Arrays outside the upgrade schema (skins, boosts, decorations, …) may also
+                    // carry timers; only level-based rows with a stable ID are upgrades.
+                    if (!item.has("lvl")) continue
+                    throw IllegalArgumentException("An upgrade entry is missing its stable game data ID.")
+                }
                 val entity = GameCatalogue.resolve(dataId)
                 val actualSection = if (entity.category == GameCategory.UNKNOWN) "Unknown item" else section
                 val goblin = if (key.endsWith("2") || key in goblinExemptSections) null else parseGoblinFlag(item.opt("extra"))
@@ -169,7 +183,37 @@ object VillageExportParser {
             }
         }
         require(jobs.size <= 300) { "Export contains too many active upgrades." }
-        return VillageSnapshot(tag, root.optString("name").trim().takeUnless { it.equals("null", ignoreCase = true) }.orEmpty(), hall, builders, stamp, jobs)
+        return VillageSnapshot(tag, PlayerIdentity.usableName(root.optString("name")).orEmpty(), hall, builders, stamp, jobs)
+    }
+
+    /**
+     * Every top-level JSON array of the export: the schema-defined upgrade sections first
+     * (stable order), then any unknown array sorted by key so parsing stays deterministic.
+     */
+    private fun upgradeSectionKeys(root: JSONObject): List<String> {
+        val ordered = knownSections.map { it.first }.filter { root.optJSONArray(it) != null }
+        val unknown = root.keys().asSequence()
+            .filter { it !in knownLabels && root.optJSONArray(it) != null }
+            .sorted()
+            .toList()
+        return ordered + unknown
+    }
+
+    /**
+     * Human-readable section title: the schema names are used verbatim, and any newer section
+     * key is recognised by its well-known suffix/substring (`*2` = Builder Base, `pet*` = Pets,
+     * `lab`/`research` = Laboratory) or rendered from the key itself.
+     */
+    private fun sectionLabel(key: String): String {
+        knownLabels[key]?.let { return it }
+        val lower = key.lowercase(Locale.ROOT)
+        return when {
+            lower.endsWith("2") -> "Builder Base"
+            lower.contains("pet") -> "Pets"
+            lower.contains("lab") || lower.contains("research") -> "Laboratory"
+            else -> key.split('_', '-', ' ').filter { it.isNotEmpty() }
+                .joinToString(" ") { word -> word.replaceFirstChar { it.uppercase(Locale.ROOT) } }
+        }
     }
 
     /**

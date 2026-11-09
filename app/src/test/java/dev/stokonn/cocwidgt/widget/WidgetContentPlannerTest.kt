@@ -12,8 +12,8 @@ class WidgetContentPlannerTest {
     private fun job(index: Int, dataId: Long, goblin: Boolean? = null, startedAt: Long = now, remainingMs: Long = 3_600_000L) =
         VillageJob("job:$index", "Item $index", "Builders", 2, startedAt, remainingMs, goblin, dataId = dataId)
 
-    // One real stable ID per category: building, hero, troop, spell (= Other).
-    private val categoryIds = longArrayOf(1000008L, 28000000L, 4000000L, 26000000L)
+    // One real stable ID per category: building, hero, troop, pet, helper (Goblin), unknown (Other).
+    private val categoryIds = longArrayOf(1000008L, 28000000L, 4000000L, 73000000L, 93000000L, 90000000L)
 
     private fun sampleJobs(count: Int): List<VillageJob> =
         (0 until count).map { i -> job(i, categoryIds[i % categoryIds.size]) }
@@ -36,7 +36,11 @@ class WidgetContentPlannerTest {
         val activeColumns = selection.columns.filter { it.isNotEmpty() }
         assertTrue("A wide widget must use its columns", activeColumns.size >= 2)
         val seen = activeColumns.flatten()
-        assertEquals(setOf(UpgradeCategory.BUILDINGS, UpgradeCategory.HEROES, UpgradeCategory.TROOPS, UpgradeCategory.OTHER),
+        assertEquals(
+            setOf(
+                UpgradeCategory.BUILDINGS, UpgradeCategory.HEROES, UpgradeCategory.TROOPS,
+                UpgradeCategory.PETS, UpgradeCategory.GOBLIN, UpgradeCategory.OTHER,
+            ),
             seen.map { it.category }.toSet())
         // Every column lists its categories in the canonical display order.
         val orderIndex = UpgradeCategory.displayOrder.withIndex().associate { (i, c) -> c to i }
@@ -49,16 +53,36 @@ class WidgetContentPlannerTest {
         assertEquals(8, seen.sumOf { it.items.size })
     }
 
-    @Test fun goblinWorkerUpgradesStayInTheirCategoryAndAreVisible() {
+    @Test fun eachCategoryStaysInOneColumnBlockWhenItFits() {
+        val selection = WidgetContentPlanner.select(sampleJobs(6), 480, 600, now) // one per category
+        assertEquals(0, selection.hiddenCount)
+        val blocksByCategory = selection.columns.flatten().groupBy { it.category }
+        assertEquals(UpgradeCategory.entries.toSet(), blocksByCategory.keys)
+        blocksByCategory.forEach { (category, blocks) ->
+            assertEquals("Category $category must stay whole", 1, blocks.size)
+            assertEquals(1, blocks.single().items.size)
+        }
+    }
+
+    @Test fun singleColumnWidgetListsEveryCategoryInDisplayOrder() {
+        val selection = WidgetContentPlanner.select(sampleJobs(6), 360, 900, now)
+        assertEquals(0, selection.hiddenCount)
+        assertEquals(1, selection.columnCount)
+        val groups = selection.columns.single()
+        assertEquals(UpgradeCategory.displayOrder, groups.map { it.category })
+    }
+
+    @Test fun goblinFlaggedAndHelperUpgradesShareTheirOwnColumn() {
         val jobs = listOf(
             job(0, 1000008L, goblin = true),
             job(1, 28000000L),
-            job(2, 4000000L)
+            job(2, 93000000L)
         )
         val selection = WidgetContentPlanner.select(jobs, 480, 600, now)
         assertEquals(0, selection.hiddenCount)
-        val buildings = selection.columns.flatten().single { it.category == UpgradeCategory.BUILDINGS }
-        assertEquals(true, buildings.items.single().goblin)
+        val goblin = selection.columns.flatten().single { it.category == UpgradeCategory.GOBLIN }
+        assertEquals(listOf(1000008L, 93000000L), goblin.items.map { it.dataId }.sorted())
+        assertEquals(true, goblin.items.single { it.dataId == 1000008L }.goblin)
         assertEquals(UpgradeCategory.HEROES, selection.columns.flatten().single { it.category == UpgradeCategory.HEROES }.category)
     }
 

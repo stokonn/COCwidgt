@@ -21,10 +21,12 @@ data class WidgetSelection(
 )
 
 /**
- * Stable, size-aware selection for Glance widgets: groups upgrades into visual categories,
- * distributes them over as many columns as the real widget width allows, and shows exactly as
- * many rows as the real height fits. There is no arbitrary item limit — overflow is reported
- * through [WidgetSelection.hiddenCount].
+ * Stable, size-aware selection for Glance widgets: one visual category per column block,
+ * packed into as many columns as the real widget width allows, showing exactly as many rows
+ * as the real height fits. Categories are placed as whole blocks whenever they fit (they are
+ * only split across columns when a single column cannot hold them), every column lists its
+ * blocks in the canonical display order, and there is no arbitrary item limit — overflow is
+ * reported through [WidgetSelection.hiddenCount].
  */
 object WidgetContentPlanner {
     private const val COMPACT_WIDTH_DP = 280
@@ -35,13 +37,15 @@ object WidgetContentPlanner {
     private const val TWO_COLUMN_MIN_WIDTH_DP = 400
     private const val THREE_COLUMN_MIN_WIDTH_DP = 640
 
-    private const val SINGLE_ROW_HEIGHT_DP = 51
-    private const val MULTI_ROW_HEIGHT_DP = 48
-    private const val GROUP_HEADER_HEIGHT_DP = 17
+    // Conservative measured heights incl. margins so the rendered Glance layout never clips.
+    private const val SINGLE_ROW_HEIGHT_DP = 54
+    private const val MULTI_ROW_HEIGHT_DP = 50
+    private const val GROUP_HEADER_HEIGHT_DP = 19
     const val COLUMN_GAP_DP = 10
 
     // Player header (incl. padding), header spacing and the export age line.
     private const val RESERVED_HEIGHT_DP = 26 + 58 + 7 + 16
+    // The API status line is always rendered below the export line in the full layout.
     private const val API_STATUS_HEIGHT_DP = 16
     private const val OVERFLOW_LINE_HEIGHT_DP = 16
 
@@ -63,8 +67,7 @@ object WidgetContentPlanner {
 
         val columnCount = columnCount(widthDp)
         val rowHeight = if (columnCount == 1) SINGLE_ROW_HEIGHT_DP else MULTI_ROW_HEIGHT_DP
-        val apiReserved = if (widthDp >= 420 && heightDp >= 360) API_STATUS_HEIGHT_DP else 0
-        val baseAvailable = heightDp - RESERVED_HEIGHT_DP - apiReserved
+        val baseAvailable = heightDp - RESERVED_HEIGHT_DP - API_STATUS_HEIGHT_DP
         val groups = groupByCategory(ordered)
         if (groups.isEmpty()) {
             return WidgetSelection(emptyList(), 0, compact = false, columns = List(columnCount) { emptyList() }, columnCount = columnCount)
@@ -104,57 +107,50 @@ object WidgetContentPlanner {
         val heights = IntArray(columnCount)
         var hidden = 0
 
-        val estimatedTotal = groups.sumOf { GROUP_HEADER_HEIGHT_DP + it.items.size * rowHeight }
-        val fitsHorizontally = estimatedTotal <= availableHeight
+        fun blockHeight(itemCount: Int): Int = GROUP_HEADER_HEIGHT_DP + itemCount * rowHeight
 
-        if (fitsHorizontally) {
-            // Everything fits vertically: spread items over the columns so no column is left
-            // empty and the available width is actually used.
-            for (group in groups) {
-                for (item in group.items) {
-                    val target = (0 until columnCount).minByOrNull { candidate ->
-                        val slices = columns[candidate]
-                        val header = if (slices.isNotEmpty() && slices.last().first == group.category) 0 else GROUP_HEADER_HEIGHT_DP
-                        heights[candidate] + header
-                    } ?: break
-                    val slices = columns[target]
-                    if (slices.isEmpty() || slices.last().first != group.category) {
-                        slices.add(group.category to mutableListOf())
-                        heights[target] += GROUP_HEADER_HEIGHT_DP
-                    }
-                    val projected = heights[target] + rowHeight
-                    if (projected > availableHeight) { hidden += 1; continue }
-                    slices.last().second.add(item)
-                    heights[target] = projected
-                }
+        // Pass 1: each category block goes whole into the least-loaded column that fits it,
+        // so a category is visually distinct (one block) whenever the height allows it.
+        val pending = mutableListOf<UpgradeGroup>()
+        for (group in groups) {
+            val cost = blockHeight(group.items.size)
+            val target = (0 until columnCount)
+                .filter { heights[it] + cost <= availableHeight }
+                .minByOrNull { heights[it] }
+            if (target == null) {
+                pending += group
+            } else {
+                columns[target].add(group.category to group.items.toMutableList())
+                heights[target] += cost
             }
-        } else {
-            // Content exceeds one column: fill columns in order so no later column has room
-            // while an earlier one is cut short. A category split across columns repeats its header.
+        }
+
+        // Pass 2: a block taller than the remaining space fills the columns left to right —
+        // no later column keeps room while an earlier one is cut short. A split category
+        // repeats its header in each column it continues in; anything still not fitting is
+        // reported as hidden instead of being dropped silently.
+        for (group in pending) {
+            var index = 0
             var column = 0
-            for (group in groups) {
-                var index = 0
-                while (index < group.items.size && column < columnCount) {
-                    val slices = columns[column]
-                    val continued = slices.isNotEmpty() && slices.last().first == group.category
-                    val header = if (continued) 0 else GROUP_HEADER_HEIGHT_DP
-                    if (heights[column] + header + rowHeight > availableHeight) {
-                        column++
-                        continue
-                    }
-                    if (!continued) slices.add(group.category to mutableListOf())
-                    slices.last().second.add(group.items[index])
-                    heights[column] += header + rowHeight
-                    index++
+            while (index < group.items.size && column < columnCount) {
+                val capacity = ((availableHeight - heights[column] - GROUP_HEADER_HEIGHT_DP) / rowHeight).coerceAtLeast(0)
+                if (capacity > 0) {
+                    val take = minOf(capacity, group.items.size - index)
+                    columns[column].add(group.category to group.items.subList(index, index + take).toMutableList())
+                    heights[column] += GROUP_HEADER_HEIGHT_DP + take * rowHeight
+                    index += take
                 }
-                if (index < group.items.size) hidden += group.items.size - index
+                column++
             }
+            hidden += group.items.size - index
         }
 
-        val renderedColumns = columns.map { slices ->
-            slices.filter { it.second.isNotEmpty() }.map { UpgradeGroup(it.first, it.second.toList()) }
-        }
         val orderIndex = UpgradeCategory.displayOrder.withIndex().associate { (i, cat) -> cat to i }
+        val renderedColumns = columns.map { slices ->
+            slices.filter { it.second.isNotEmpty() }
+                .sortedBy { orderIndex.getValue(it.first) }
+                .map { UpgradeGroup(it.first, it.second.toList()) }
+        }
         val visible = renderedColumns.flatten().flatMap { it.items }
             .sortedBy { orderIndex.getValue(it.category) }
         return WidgetSelection(

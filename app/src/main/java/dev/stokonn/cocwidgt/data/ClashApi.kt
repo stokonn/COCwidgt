@@ -18,6 +18,43 @@ data class PlayerSnapshot(
     val syncedAt: Long
 )
 
+/**
+ * Pure mapping of the Clash API `/players/{tag}` response body to a [PlayerSnapshot].
+ * Free of networking so nickname resolution and the strict tag checks are unit-testable.
+ *
+ * The response tag must match the requested one — a nickname from a different player's
+ * profile can never be captured here.
+ */
+object PlayerProfileDto {
+    fun parse(body: String, requestedTag: String, syncedAt: Long = System.currentTimeMillis()): PlayerSnapshot {
+        val json = runCatching { JSONObject(body) }
+            .getOrElse { throw IllegalStateException("Clash API returned an unreadable response.") }
+        val responseTag = PlayerIdentity.normalizeTag(json.optString("tag", requestedTag))
+            ?: throw IllegalStateException("Clash API returned an invalid Player Tag.")
+        if (responseTag != requestedTag) throw IllegalStateException("Clash API response does not match the requested Player Tag.")
+        val heroes = buildList {
+            val array = json.optJSONArray("heroes") ?: return@buildList
+            for (i in 0 until array.length()) {
+                val hero = array.optJSONObject(i) ?: continue
+                val heroName = hero.optString("name")
+                val level = hero.optInt("level", -1)
+                if (heroName.isNotBlank() && level >= 0) add("$heroName · $level")
+            }
+        }
+        return PlayerSnapshot(
+            name = PlayerIdentity.usableName(json.optString("name")).orEmpty(),
+            tag = responseTag,
+            townHall = json.takeIf { it.has("townHallLevel") }?.optInt("townHallLevel"),
+            expLevel = json.takeIf { it.has("expLevel") }?.optInt("expLevel"),
+            trophies = json.takeIf { it.has("trophies") }?.optInt("trophies"),
+            bestTrophies = json.takeIf { it.has("bestTrophies") }?.optInt("bestTrophies"),
+            warStars = json.takeIf { it.has("warStars") }?.optInt("warStars"),
+            heroes = heroes,
+            syncedAt = syncedAt,
+        )
+    }
+}
+
 class ClashApi(private val context: Context) {
     fun fetchPlayer(tag: String, token: String): PlayerSnapshot {
         val requestedTag = PlayerIdentity.normalizeTag(tag) ?: throw IllegalArgumentException("Enter a valid Player Tag.")
@@ -37,55 +74,30 @@ class ClashApi(private val context: Context) {
                 val detail = runCatching { JSONObject(body).optString("message") }.getOrNull()
                 throw ApiException(status, detail?.takeIf { it.isNotBlank() } ?: "HTTP $status")
             }
-            val json = JSONObject(body)
-            val responseTag = PlayerIdentity.normalizeTag(json.optString("tag", requestedTag))
-                ?: throw IllegalStateException("Clash API returned an invalid Player Tag.")
-            if (responseTag != requestedTag) throw IllegalStateException("Clash API response does not match the requested Player Tag.")
-            val heroes = buildList {
-                val array = json.optJSONArray("heroes") ?: return@buildList
-                for (i in 0 until array.length()) {
-                    val hero = array.optJSONObject(i) ?: continue
-                    val heroName = hero.optString("name")
-                    val level = hero.optInt("level", -1)
-                    if (heroName.isNotBlank() && level >= 0) add("$heroName · $level")
-                }
-            }
-            return PlayerSnapshot(
-                name = json.optString("name").trim().takeUnless { it.equals("null", ignoreCase = true) }.orEmpty(),
-                tag = responseTag,
-                townHall = json.takeIf { it.has("townHallLevel") }?.optInt("townHallLevel"),
-                expLevel = json.takeIf { it.has("expLevel") }?.optInt("expLevel"),
-                trophies = json.takeIf { it.has("trophies") }?.optInt("trophies"),
-                bestTrophies = json.takeIf { it.has("bestTrophies") }?.optInt("bestTrophies"),
-                warStars = json.takeIf { it.has("warStars") }?.optInt("warStars"),
-                heroes = heroes,
-                syncedAt = System.currentTimeMillis()
-            )
+            return PlayerProfileDto.parse(body, requestedTag)
         } finally {
             connection.disconnect()
         }
     }
 
     fun saveSnapshot(snapshot: PlayerSnapshot) {
-        val normalizedTag = PlayerIdentity.normalizeTag(snapshot.tag)
-            ?: throw IllegalArgumentException("Cannot save a profile without a valid Player Tag.")
-        context.getSharedPreferences("cocwidgt_player", Context.MODE_PRIVATE).edit()
-            .putString("name", snapshot.name.trim())
-            .putString("tag", normalizedTag)
-            .putInt("town_hall", snapshot.townHall ?: -1)
-            .putInt("exp_level", snapshot.expLevel ?: -1)
-            .putInt("trophies", snapshot.trophies ?: -1)
-            .putInt("best_trophies", snapshot.bestTrophies ?: -1)
-            .putInt("war_stars", snapshot.warStars ?: -1)
-            .putString("heroes", snapshot.heroes.joinToString("|"))
-            .putLong("synced_at", snapshot.syncedAt)
-            .putString("sync_error", "")
-            .apply()
+        // Pure codec: throws for an invalid tag instead of persisting a mislabelled profile.
+        val values = PlayerProfileCodec.encode(snapshot)
+        val editor = context.getSharedPreferences(PlayerProfileCodec.PREFS, Context.MODE_PRIVATE).edit()
+        values.forEach { (key, value) ->
+            when (value) {
+                is String -> editor.putString(key, value)
+                is Int -> editor.putInt(key, value)
+                is Long -> editor.putLong(key, value)
+                else -> throw IllegalArgumentException("Unsupported profile value for '$key'.")
+            }
+        }
+        editor.apply()
     }
 
     fun saveError(message: String) {
-        context.getSharedPreferences("cocwidgt_player", Context.MODE_PRIVATE).edit()
-            .putString("sync_error", message.take(160)).apply()
+        context.getSharedPreferences(PlayerProfileCodec.PREFS, Context.MODE_PRIVATE).edit()
+            .putString(PlayerProfileCodec.SYNC_ERROR_KEY, message.take(160)).apply()
     }
 }
 class ApiException(val status: Int, message: String) : Exception(message)

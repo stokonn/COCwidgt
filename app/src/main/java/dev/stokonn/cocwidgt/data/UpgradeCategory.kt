@@ -1,25 +1,48 @@
 package dev.stokonn.cocwidgt.data
 
 /**
- * Coarse widget grouping for active upgrades. Derived from the stable game data ID so the
- * same upgrade always lands in the same category regardless of which export section it came from.
+ * Visual grouping of upgrades shown as one column block on the widget.
+ *
+ * The categories are derived from the actual upgrade types present in a Clash export
+ * (see [VillageExportParser]) - not from arbitrary row slicing:
+ *  - [BUILDINGS] - defence/resource/army buildings and traps
+ *  - [HEROES] - heroes and hero equipment
+ *  - [TROOPS] - laboratory research (troops, spells, siege machines)
+ *  - [PETS] - pet house upgrades (building and pets alike)
+ *  - [GOBLIN] - Goblin Builder / Goblin Researcher upgrades and helper entities
+ *    (Builder's Apprentice, Lab Assistant, Prospector)
+ *  - [OTHER] - anything that does not fit the categories above (kept visible, never dropped)
  */
-enum class UpgradeCategory(val label: String) {
-    BUILDINGS("Buildings"),
-    HEROES("Heroes"),
-    TROOPS("Troops"),
-    OTHER("Other");
+enum class UpgradeCategory(val label: String, val order: Int) {
+    BUILDINGS("Buildings & Traps", 10),
+    HEROES("Heroes & Equipment", 20),
+    TROOPS("Troops & Research", 30),
+    PETS("Pets", 40),
+    GOBLIN("Goblin / Builder", 50),
+    OTHER("Other", 90),
+    ;
 
     companion object {
-        val displayOrder: List<UpgradeCategory> = listOf(BUILDINGS, HEROES, TROOPS, OTHER)
+        /** Categories in their canonical widget display order. */
+        val displayOrder: List<UpgradeCategory> = entries.sortedBy { it.order }
 
-        fun of(category: GameCategory): UpgradeCategory = when (category) {
-            GameCategory.BUILDING, GameCategory.DEFENCE, GameCategory.TRAP -> BUILDINGS
-            GameCategory.HERO -> HEROES
-            GameCategory.TROOP, GameCategory.SIEGE -> TROOPS
-            GameCategory.SPELL, GameCategory.PET, GameCategory.UNKNOWN -> OTHER
+        /** Category of a parsed upgrade job. Precedence: goblin flag -> Pet House
+         *  -> game category. Unknown section keys land in [OTHER] instead of being dropped. */
+        fun of(job: VillageJob): UpgradeCategory = when {
+            job.goblin == true -> GOBLIN
+            job.dataId == 1000068L -> PETS // Pet House (Tome of Pets)
+            else -> when (GameCatalogue.resolve(job.dataId).category) {
+                GameCategory.HERO -> HEROES
+                GameCategory.PET -> PETS
+                GameCategory.SPELL -> TROOPS
+                GameCategory.TROOP -> TROOPS
+                GameCategory.SIEGE -> TROOPS
+                GameCategory.HELPER -> GOBLIN
+                GameCategory.BUILDING -> BUILDINGS
+                GameCategory.DEFENCE -> BUILDINGS
+                GameCategory.TRAP -> BUILDINGS
+                GameCategory.UNKNOWN -> OTHER
+            }
         }
-
-        fun of(job: VillageJob): UpgradeCategory = of(GameCatalogue.resolve(job.dataId).category)
     }
 }

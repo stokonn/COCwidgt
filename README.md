@@ -4,11 +4,11 @@ COCwidgt is an unofficial Android home-screen companion for Clash of Clans. Vers
 
 ## What it shows
 
-- A resizable Glance widget that adapts content to its actual width and height: one, two or three category-ordered columns depending on the real widget size.
-- Player name, tag and Town Hall from the official API and/or export. The nickname comes from an API profile sync that now runs automatically when a token is configured.
-- Active builder, laboratory, hero equipment, pet and Builder Base upgrades with local countdowns, including Goblin Worker upgrades marked with a **GOBLIN** badge.
+- A resizable Glance widget that adapts content to its actual width and height: one, two or three columns depending on the real widget size, each listing whole upgrade categories (Buildings & Traps, Heroes & Equipment, Troops & Research, Pets, Goblin / Builder, Other) as visually distinct blocks in a fixed order.
+- Player name, tag and Town Hall from the official API and/or export. The nickname comes from an API profile sync that is scheduled automatically on every app launch (15-minute WorkManager worker) and runs only against the saved Player Tag — a profile for another tag is never displayed.
+- Active builder, laboratory, hero equipment, pet, goblin and Builder Base upgrades with local countdowns. Goblin Builder / Goblin Researcher rows and helper entities (Builder's Apprentice, Lab Assistant, Prospector) form their own **Goblin / Builder** column.
 - Progress bars derived from real timestamps, plus export age and a stale marker after 24 hours.
-- Import parsing by stable game data ID, with explicit `Unknown game item (ID …)` labels for IDs without a catalogue entry.
+- Import parsing by stable game data ID: every top-level array of the export is read (not a fixed whitelist), and IDs without a catalogue entry are labelled explicitly as `Unknown game item (ID …)` instead of being dropped.
 - Optional Supercell API profile sync; the API does not provide live upgrade timers.
 - Periodic widget refresh (15 minutes) so countdowns and progress bars keep advancing without per-second updates.
 

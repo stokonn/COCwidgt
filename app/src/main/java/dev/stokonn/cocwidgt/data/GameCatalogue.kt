@@ -2,7 +2,7 @@ package dev.stokonn.cocwidgt.data
 
 
 /** Stable IDs and English names observed in the public village export schema. Unknown IDs stay explicit. */
-enum class GameCategory { BUILDING, DEFENCE, HERO, TROOP, SPELL, PET, TRAP, SIEGE, UNKNOWN }
+enum class GameCategory { BUILDING, DEFENCE, HERO, TROOP, SPELL, PET, TRAP, SIEGE, HELPER, UNKNOWN }
 
 data class GameEntity(val id: Long, val name: String, val category: GameCategory) {
     val iconKey: String get() = category.name.lowercase()
@@ -56,7 +56,7 @@ object GameCatalogue {
         GameEntity(28000000, "Barbarian King", GameCategory.HERO), GameEntity(28000001, "Archer Queen", GameCategory.HERO),
         GameEntity(28000002, "Grand Warden", GameCategory.HERO), GameEntity(28000003, "Battle Machine", GameCategory.HERO),
         GameEntity(28000004, "Royal Champion", GameCategory.HERO), GameEntity(28000005, "Battle Copter", GameCategory.HERO),
-        GameEntity(28000006, "Minion Prince", GameCategory.HERO),
+        GameEntity(28000006, "Minion Prince", GameCategory.HERO), GameEntity(28000007, "Dragon Duke", GameCategory.HERO),
         GameEntity(4000000, "Barbarian", GameCategory.TROOP), GameEntity(4000001, "Archer", GameCategory.TROOP),
         GameEntity(4000002, "Goblin", GameCategory.TROOP), GameEntity(4000003, "Giant", GameCategory.TROOP),
         GameEntity(4000004, "Wall Breaker", GameCategory.TROOP), GameEntity(4000005, "Balloon", GameCategory.TROOP),
@@ -99,8 +99,8 @@ object GameCatalogue {
         GameEntity(73000008, "Diggy", GameCategory.PET), GameEntity(73000009, "Frosty", GameCategory.PET),
         GameEntity(73000010, "Spirit Fox", GameCategory.PET), GameEntity(73000011, "Angry Jelly", GameCategory.PET),
         GameEntity(73000016, "Sneezy", GameCategory.PET), GameEntity(73000017, "Greedy Raven", GameCategory.PET),
-        GameEntity(93000000, "Builder's Apprentice", GameCategory.UNKNOWN), GameEntity(93000001, "Lab Assistant", GameCategory.UNKNOWN),
-        GameEntity(93000002, "Prospector", GameCategory.UNKNOWN)
+        GameEntity(93000000, "Builder's Apprentice", GameCategory.HELPER), GameEntity(93000001, "Lab Assistant", GameCategory.HELPER),
+        GameEntity(93000002, "Prospector", GameCategory.HELPER)
     ).associateBy { it.id }
 
     fun find(id: Long): GameEntity? = entries[id]

@@ -39,13 +39,12 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.glance.appwidget.updateAll
 import androidx.lifecycle.lifecycleScope
-import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
+import dev.stokonn.cocwidgt.data.PlayerHeaderState
 import dev.stokonn.cocwidgt.data.PlayerIdentity
+import dev.stokonn.cocwidgt.data.PlayerProfileCodec
 import dev.stokonn.cocwidgt.data.VillageExportParser
 import dev.stokonn.cocwidgt.data.VillageSnapshot
 import dev.stokonn.cocwidgt.security.TokenStore
@@ -55,7 +54,6 @@ import dev.stokonn.cocwidgt.widget.CocWidget
 import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
-import java.util.concurrent.TimeUnit
 
 private val Forest = Color(0xFF241A15)
 private val Stone = Color(0xFF38281F)
@@ -69,22 +67,31 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WidgetRefreshWorker.enqueue(this)
+        // The nickname only exists in the Clash API profile, so the automatic refresh is
+        // scheduled on every launch — not only when the settings screen is opened.
+        SyncWorker.enqueuePeriodic(this)
         val settings = getSharedPreferences("cocwidgt", MODE_PRIVATE)
-        val player = getSharedPreferences("cocwidgt_player", MODE_PRIVATE)
+        val player = getSharedPreferences(PlayerProfileCodec.PREFS, MODE_PRIVATE)
         val village = VillageSnapshot.load(this)
         val tokenStore = TokenStore(this)
-        val savedProfileTag = PlayerIdentity.firstValidTag(player.getString("tag", null), player.getString("player_tag", null))
-        val initialTag = PlayerIdentity.firstValidTag(village?.tag, settings.getString("player_tag", null), savedProfileTag).orEmpty()
-        val initialName = PlayerIdentity.matchingName(initialTag, savedProfileTag, player.getString("name", null), village?.tag, village?.name)
-        val initialTownHall = village?.townHall?.takeIf { it > 0 }
-            ?: player.getInt("town_hall", -1).takeIf { initialTag.isNotBlank() && savedProfileTag == initialTag && it > 0 }
+        val storedProfile = PlayerProfileCodec.decode(player.all)
+        val header = PlayerIdentity.headerState(
+            exportTag = village?.tag,
+            exportName = village?.name,
+            exportTownHall = village?.townHall ?: 0,
+            settingsTag = settings.getString("player_tag", null),
+            profile = storedProfile,
+        )
+        val initialTag = header.expectedTag.orEmpty()
+        val initialName = header.displayName
+        val initialTownHall = header.townHall.takeIf { it > 0 }
         val lastUpdate = village?.exportedAt?.takeIf { it > 0L }?.let {
             "Village imported ${DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(it))}"
         } ?: "No village export imported yet"
 
         setContent {
             var tag by remember { mutableStateOf(initialTag) }
-            var profileName by remember { mutableStateOf(initialName ?: "Player profile") }
+            var profileName by remember { mutableStateOf(initialName) }
             var townHall by remember { mutableStateOf(initialTownHall) }
             var exportTag by remember { mutableStateOf(village?.tag) }
             var exportName by remember { mutableStateOf(village?.name) }
@@ -95,11 +102,23 @@ class MainActivity : ComponentActivity() {
             var importing by remember { mutableStateOf(false) }
             var syncing by remember { mutableStateOf(false) }
             var syncState by remember { mutableStateOf(
-                if (initialTag.isNotBlank() && savedProfileTag == initialTag && player.getLong("synced_at", 0L) > 0L) "Profile synced"
-                else if (initialTag.isNotBlank() && savedProfileTag == initialTag) player.getString("sync_error", null) ?: "Profile not synced"
-                else "Profile not synced for this tag"
+                when {
+                    initialTag.isNotBlank() && storedProfile.tag == initialTag && storedProfile.syncedAt > 0L -> "Profile synced"
+                    initialTag.isNotBlank() && storedProfile.tag == initialTag -> storedProfile.syncError ?: "Profile not synced"
+                    else -> "Profile not synced for this tag"
+                }
             ) }
             var villageStatus by remember { mutableStateOf(lastUpdate) }
+
+            // One shared identity rule for every header update: the display name is the stored
+            // API nickname for the matching tag, else the export name, else the neutral fallback.
+            fun headerFor(tagValue: String?): PlayerHeaderState = PlayerIdentity.headerState(
+                exportTag = exportTag,
+                exportName = exportName,
+                exportTownHall = village?.townHall ?: 0,
+                settingsTag = tagValue,
+                profile = PlayerProfileCodec.decode(player.all),
+            )
 
             fun startProfileSync(targetTag: String) {
                 syncing = true
@@ -107,13 +126,14 @@ class MainActivity : ComponentActivity() {
                 enqueuePlayerSync(targetTag) { info ->
                     if (info.state.isFinished) {
                         syncing = false
-                        val apiTag = PlayerIdentity.firstValidTag(player.getString("tag", null), player.getString("player_tag", null))
-                        if (info.state == WorkInfo.State.SUCCEEDED && apiTag == PlayerIdentity.normalizeTag(targetTag)) {
-                            profileName = PlayerIdentity.matchingName(targetTag, apiTag, player.getString("name", null), exportTag, exportName) ?: "Player profile"
-                            townHall = player.getInt("town_hall", -1).takeIf { it > 0 }
+                        val stored = PlayerProfileCodec.decode(player.all)
+                        if (info.state == WorkInfo.State.SUCCEEDED && stored.tag == PlayerIdentity.normalizeTag(targetTag)) {
+                            val state = headerFor(settings.getString("player_tag", null))
+                            profileName = state.displayName
+                            townHall = state.townHall.takeIf { it > 0 }
                             syncState = "Profile synced"
                         } else {
-                            syncState = player.getString("sync_error", null) ?: "Profile sync failed"
+                            syncState = stored.syncError ?: "Profile sync failed"
                         }
                     }
                 }
@@ -123,14 +143,13 @@ class MainActivity : ComponentActivity() {
             // API profile. Pull it automatically whenever it is missing or older than 6 hours.
             LaunchedEffect(Unit) {
                 val token = tokenStore.read()
+                val stored = PlayerProfileCodec.decode(player.all)
                 val target = PlayerIdentity.firstValidTag(
-                    settings.getString("player_tag", null), player.getString("tag", null), village?.tag
+                    settings.getString("player_tag", null), stored.tag, village?.tag
                 )
                 if (!token.isNullOrBlank() && target != null) {
-                    val storedTag = PlayerIdentity.firstValidTag(player.getString("tag", null), player.getString("player_tag", null))
-                    val hasName = storedTag == target && !player.getString("name", null).isNullOrBlank()
-                    val syncedAt = player.getLong("synced_at", 0L)
-                    val stale = syncedAt == 0L || System.currentTimeMillis() - syncedAt > 6 * 60 * 60 * 1000L
+                    val hasName = stored.tag == target && !stored.name.isNullOrBlank()
+                    val stale = stored.syncedAt == 0L || System.currentTimeMillis() - stored.syncedAt > 6 * 60 * 60 * 1000L
                     if (!hasName || stale) startProfileSync(target)
                 }
             }
@@ -177,10 +196,17 @@ class MainActivity : ComponentActivity() {
                                             .withMergedTimers(VillageSnapshot.load(this@MainActivity))
                                         snapshot.save(this@MainActivity)
                                         tag = snapshot.tag
-                                        townHall = snapshot.townHall.takeIf { it > 0 }
                                         exportTag = snapshot.tag
                                         exportName = snapshot.name
-                                        profileName = PlayerIdentity.matchingName(snapshot.tag, savedProfileTag, player.getString("name", null), snapshot.tag, snapshot.name) ?: "Player profile"
+                                        val state = PlayerIdentity.headerState(
+                                            exportTag = snapshot.tag,
+                                            exportName = snapshot.name,
+                                            exportTownHall = snapshot.townHall,
+                                            settingsTag = snapshot.tag,
+                                            profile = PlayerProfileCodec.decode(player.all),
+                                        )
+                                        profileName = state.displayName
+                                        townHall = state.townHall.takeIf { it > 0 }
                                         settings.edit().putString("player_tag", snapshot.tag).apply()
                                         villageStatus = "Imported ${DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(snapshot.exportedAt))} · ${snapshot.jobs.size} active upgrades"
                                         importMessage = "Village data imported. Widget updated."
@@ -207,9 +233,12 @@ class MainActivity : ComponentActivity() {
                                     onValueChange = {
                                         tag = it.uppercase().filter { c -> c.isLetterOrDigit() || c == '#' }
                                         val normalized = PlayerIdentity.normalizeTag(tag)
-                                        val apiTag = PlayerIdentity.firstValidTag(player.getString("tag", null), player.getString("player_tag", null))
-                                        profileName = PlayerIdentity.matchingName(normalized, apiTag, player.getString("name", null), exportTag, exportName) ?: "Player profile"
-                                        if (normalized != apiTag) syncState = "Profile not synced for this tag"
+                                        val stored = PlayerProfileCodec.decode(player.all)
+                                        // Preview resolves strictly against the tag being typed.
+                                        profileName = PlayerIdentity.matchingName(
+                                            normalized, stored.tag, stored.name, exportTag, exportName
+                                        ) ?: PlayerHeaderState.FALLBACK_NAME
+                                        if (normalized != stored.tag) syncState = "Profile not synced for this tag"
                                     },
                                     label = { Text("Player Tag") }, placeholder = { Text("#Y2099VGPJ") }, singleLine = true,
                                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),
@@ -238,10 +267,7 @@ class MainActivity : ComponentActivity() {
                                                 tokenConfigured = true
                                             }
                                             settings.edit().putString("player_tag", normalized).apply()
-                                            WorkManager.getInstance(this@MainActivity).enqueueUniquePeriodicWork(
-                                                "cocwidgt-periodic-sync", ExistingPeriodicWorkPolicy.UPDATE,
-                                                PeriodicWorkRequestBuilder<SyncWorker>(15, TimeUnit.MINUTES).build()
-                                            )
+                                            SyncWorker.enqueuePeriodic(this@MainActivity)
                                             syncState = "Settings saved"
                                             lifecycleScope.launch { CocWidget().updateAll(this@MainActivity) }
                                         }
@@ -277,7 +303,8 @@ class MainActivity : ComponentActivity() {
 }
 
 private fun MainActivity.enqueuePlayerSync(tag: String, onUpdate: (WorkInfo) -> Unit) {
-    val request = OneTimeWorkRequestBuilder<SyncWorker>().build()
+    // The tag travels with the request, so SyncWorker runs against exactly this player.
+    val request = SyncWorker.request(tag)
     val workManager = WorkManager.getInstance(this)
     workManager.enqueueUniqueWork("cocwidgt-manual-sync", ExistingWorkPolicy.REPLACE, request)
     workManager.getWorkInfoByIdLiveData(request.id).observe(this) { info -> info?.let(onUpdate) }

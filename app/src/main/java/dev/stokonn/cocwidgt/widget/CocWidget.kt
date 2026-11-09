@@ -35,7 +35,9 @@ import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import dev.stokonn.cocwidgt.MainActivity
 import dev.stokonn.cocwidgt.data.GameArtwork
+import dev.stokonn.cocwidgt.data.PlayerHeaderState
 import dev.stokonn.cocwidgt.data.PlayerIdentity
+import dev.stokonn.cocwidgt.data.PlayerProfileCodec
 import dev.stokonn.cocwidgt.data.VillageJob
 import dev.stokonn.cocwidgt.data.VillageSnapshot
 import dev.stokonn.cocwidgt.sync.WidgetRefreshWorker
@@ -66,16 +68,21 @@ class CocWidget : GlanceAppWidget() {
             val widthDp = size.width.value.toInt()
             val heightDp = size.height.value.toInt()
             val village = VillageSnapshot.load(ctx)
-            val profile = ctx.getSharedPreferences("cocwidgt_player", Context.MODE_PRIVATE)
-            val profileTag = PlayerIdentity.firstValidTag(profile.getString("tag", null), profile.getString("player_tag", null))
+            val profile = PlayerProfileCodec.decode(ctx.getSharedPreferences(PlayerProfileCodec.PREFS, Context.MODE_PRIVATE).all)
             val settings = ctx.getSharedPreferences("cocwidgt", Context.MODE_PRIVATE)
-            val expectedTag = PlayerIdentity.firstValidTag(village?.tag, settings.getString("player_tag", null), profileTag)
-            val tag = expectedTag ?: profileTag ?: "ADD PLAYER TAG"
-            val playerName = PlayerIdentity.matchingName(expectedTag, profileTag, profile.getString("name", null), village?.tag, village?.name) ?: "Player profile"
-            val profileMatches = expectedTag != null && profileTag == expectedTag
-            val th = village?.townHall?.takeIf { it > 0 } ?: profile.getInt("town_hall", -1).takeIf { profileMatches } ?: -1
-            val apiSyncedAt = if (profileMatches) profile.getLong("synced_at", 0L) else 0L
-            val apiError = if (profileMatches) profile.getString("sync_error", "").orEmpty() else ""
+            val header = PlayerIdentity.headerState(
+                exportTag = village?.tag,
+                exportName = village?.name,
+                exportTownHall = village?.townHall ?: 0,
+                settingsTag = settings.getString("player_tag", null),
+                profile = profile,
+            )
+            val tag = header.expectedTag ?: PlayerHeaderState.NO_TAG_LABEL
+            val playerName = header.displayName
+            val th = header.townHall
+            val profileMatches = header.profileMatches
+            val apiSyncedAt = header.apiSyncedAt
+            val apiError = header.apiError
             val now = System.currentTimeMillis()
             val selection = WidgetContentPlanner.select(village?.jobs.orEmpty(), widthDp, heightDp, now)
             val compact = selection.compact
@@ -146,15 +153,14 @@ class CocWidget : GlanceAppWidget() {
                     val exported = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(village.exportedAt))
                     Text("${if (stale) "STALE · " else "EXPORTED · "}$exported", maxLines = 1,
                         style = TextStyle(color = ColorProvider(if (stale) Gold else Muted), fontSize = 12.sp))
-                    if (widthDp >= 420 && heightDp >= 360) {
-                        val apiStatus = when {
-                            !profileMatches -> "API · not synced for this player"
-                            apiError.isNotBlank() -> "API · $apiError"
-                            apiSyncedAt > 0 -> "API synced · ${DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(apiSyncedAt))}"
-                            else -> "API · not synced"
-                        }
-                        Text(apiStatus, maxLines = 1, style = TextStyle(color = ColorProvider(Muted), fontSize = 12.sp))
+                    // Reserved by the planner in every non-compact size, so the layout never jumps.
+                    val apiStatus = when {
+                        !profileMatches -> "API · not synced for this player"
+                        apiError.isNotBlank() -> "API · $apiError"
+                        apiSyncedAt > 0 -> "API synced · ${DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(apiSyncedAt))}"
+                        else -> "API · not synced"
                     }
+                    Text(apiStatus, maxLines = 1, style = TextStyle(color = ColorProvider(Muted), fontSize = 12.sp))
                 }
             }
         }
