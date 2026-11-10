@@ -37,16 +37,15 @@ object WidgetContentPlanner {
     private const val TWO_COLUMN_MIN_WIDTH_DP = 400
     private const val THREE_COLUMN_MIN_WIDTH_DP = 640
 
-    // Conservative measured heights incl. margins so the rendered Glance layout never clips.
-    private const val SINGLE_ROW_HEIGHT_DP = 54
-    private const val MULTI_ROW_HEIGHT_DP = 50
+    // Measured heights of the reference-design rows: green progress row (34) + its 2dp margin.
+    private const val SINGLE_ROW_HEIGHT_DP = 36
+    private const val MULTI_ROW_HEIGHT_DP = 36
     private const val GROUP_HEADER_HEIGHT_DP = 19
     const val COLUMN_GAP_DP = 10
 
-    // Player header (incl. padding), header spacing and the export age line.
-    private const val RESERVED_HEIGHT_DP = 26 + 58 + 7 + 16
-    // The API status line is always rendered below the export line in the full layout.
-    private const val API_STATUS_HEIGHT_DP = 16
+    // Content padding (13 * 2), player header incl. padding, header spacing and the bottom
+    // status row (chips + last-sync line). The API/export status lives inside that row.
+    private const val RESERVED_HEIGHT_DP = 26 + 52 + 6 + 24
     private const val OVERFLOW_LINE_HEIGHT_DP = 16
 
     fun columnCount(widthDp: Int): Int = when {
@@ -67,7 +66,7 @@ object WidgetContentPlanner {
 
         val columnCount = columnCount(widthDp)
         val rowHeight = if (columnCount == 1) SINGLE_ROW_HEIGHT_DP else MULTI_ROW_HEIGHT_DP
-        val baseAvailable = heightDp - RESERVED_HEIGHT_DP - API_STATUS_HEIGHT_DP
+        val baseAvailable = heightDp - RESERVED_HEIGHT_DP
         val groups = groupByCategory(ordered)
         if (groups.isEmpty()) {
             return WidgetSelection(emptyList(), 0, compact = false, columns = List(columnCount) { emptyList() }, columnCount = columnCount)

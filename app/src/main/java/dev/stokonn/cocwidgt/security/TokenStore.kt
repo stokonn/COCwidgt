@@ -24,6 +24,14 @@ class TokenStore(context: Context) {
         prefs.edit().putString(TOKEN_KEY, Base64.encodeToString(cipher.iv + encrypted, Base64.NO_WRAP)).apply()
     }
 
+    /**
+     * Whether an encrypted token entry exists at all — independent of whether it can be
+     * decrypted. Lets the app and widget distinguish "no token configured yet" from
+     * "token stored but unreadable" (e.g. Keystore key lost) instead of silently skipping
+     * every sync as if the user had never set one up.
+     */
+    fun hasStoredToken(): Boolean = prefs.contains(TOKEN_KEY)
+
     fun read(): String? {
         val packedText = prefs.getString(TOKEN_KEY, null) ?: return null
         return try {

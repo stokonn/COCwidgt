@@ -21,8 +21,10 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Fetches the Clash API profile for the player tag it was given ([KEY_TARGET_TAG]) with a
- * defensive fallback chain (input data → saved settings → stored profile → imported village),
- * so a sync started for one tag can never silently run against another player.
+ * defensive fallback chain (input data → saved settings → imported village → stored profile),
+ * the exact same order [PlayerIdentity.headerState] uses to resolve the displayed tag — so a
+ * sync always stores its result under the tag the app and widget header expect, and a sync
+ * started for one tag can never silently run against another player.
  */
 class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
@@ -33,14 +35,20 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         val tag = PlayerIdentity.firstValidTag(
             PlayerIdentity.normalizeTag(inputData.getString(KEY_TARGET_TAG)),
             PlayerIdentity.normalizeTag(settings.getString("player_tag", null)),
-            storedProfile.tag,
             VillageSnapshot.load(applicationContext)?.tag,
+            storedProfile.tag,
         )
-        val token = TokenStore(applicationContext).read()
+        val tokenStore = TokenStore(applicationContext)
+        val token = tokenStore.read()
         val api = ClashApi(applicationContext)
 
         if (tag == null || token.isNullOrBlank()) {
-            api.saveError("Add your Player Tag and API token in app settings.")
+            val message = when {
+                tag == null -> "Add your Player Tag and API token in app settings."
+                tokenStore.hasStoredToken() -> "Stored API token is unreadable. Re-enter it in app settings."
+                else -> "Add your Player Tag and API token in app settings."
+            }
+            api.saveError(message, tag)
             CocWidget().updateAll(applicationContext)
             return Result.failure()
         }
@@ -56,16 +64,17 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         } catch (error: ApiException) {
             val message = when (error.status) {
                 400 -> "Invalid player tag or request."
+                401 -> "API token rejected."
                 403 -> "Token rejected or source IP is not allowlisted."
                 404 -> "Player not found. Check the tag."
                 429 -> "API rate limit reached. Try later."
                 else -> "Clash API error ${error.status}: ${error.message}"
             }
-            api.saveError(message)
+            api.saveError(message, tag)
             CocWidget().updateAll(applicationContext)
             if (error.status == 429 || error.status >= 500) Result.retry() else Result.failure()
         } catch (error: Exception) {
-            api.saveError(error.message ?: "Network error.")
+            api.saveError(error.message ?: "Network error.", tag)
             CocWidget().updateAll(applicationContext)
             Result.retry()
         }

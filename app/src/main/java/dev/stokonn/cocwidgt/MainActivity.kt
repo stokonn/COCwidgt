@@ -101,9 +101,16 @@ class MainActivity : ComponentActivity() {
             var importError by remember { mutableStateOf(false) }
             var importing by remember { mutableStateOf(false) }
             var syncing by remember { mutableStateOf(false) }
+            var tokenUnreadable by remember { mutableStateOf(tokenStore.hasStoredToken() && tokenStore.read() == null) }
+            // Last successful sync time travels with the state so "synced" is always verifiable.
+            fun syncedAtLabel(at: Long): String = if (at > 0L) {
+                "Profile synced · " + DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(at))
+            } else {
+                "Profile synced"
+            }
             var syncState by remember { mutableStateOf(
                 when {
-                    initialTag.isNotBlank() && storedProfile.tag == initialTag && storedProfile.syncedAt > 0L -> "Profile synced"
+                    initialTag.isNotBlank() && storedProfile.tag == initialTag && storedProfile.syncedAt > 0L -> syncedAtLabel(storedProfile.syncedAt)
                     initialTag.isNotBlank() && storedProfile.tag == initialTag -> storedProfile.syncError ?: "Profile not synced"
                     else -> "Profile not synced for this tag"
                 }
@@ -131,7 +138,7 @@ class MainActivity : ComponentActivity() {
                             val state = headerFor(settings.getString("player_tag", null))
                             profileName = state.displayName
                             townHall = state.townHall.takeIf { it > 0 }
-                            syncState = "Profile synced"
+                            syncState = syncedAtLabel(stored.syncedAt)
                         } else {
                             syncState = stored.syncError ?: "Profile sync failed"
                         }
@@ -140,17 +147,24 @@ class MainActivity : ComponentActivity() {
             }
 
             // The village export carries no player name, so the nickname can only come from the
-            // API profile. Pull it automatically whenever it is missing or older than 6 hours.
+            // API profile. Pull it automatically whenever it is missing, older than 6 hours, or
+            // the last sync failed — a stored failure is retried, never left stuck.
             LaunchedEffect(Unit) {
                 val token = tokenStore.read()
                 val stored = PlayerProfileCodec.decode(player.all)
+                // Same canonical chain as PlayerIdentity.headerState / SyncWorker.
                 val target = PlayerIdentity.firstValidTag(
-                    settings.getString("player_tag", null), stored.tag, village?.tag
+                    settings.getString("player_tag", null), village?.tag, stored.tag
                 )
+                if (token == null && tokenStore.hasStoredToken()) {
+                    tokenUnreadable = true
+                    syncState = "API token unreadable — re-enter it in app settings"
+                }
                 if (!token.isNullOrBlank() && target != null) {
                     val hasName = stored.tag == target && !stored.name.isNullOrBlank()
                     val stale = stored.syncedAt == 0L || System.currentTimeMillis() - stored.syncedAt > 6 * 60 * 60 * 1000L
-                    if (!hasName || stale) startProfileSync(target)
+                    val failed = stored.syncError != null
+                    if (!hasName || stale || failed) startProfileSync(target)
                 }
             }
 
@@ -175,7 +189,7 @@ class MainActivity : ComponentActivity() {
                                 Text(profileName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                                 Text(townHall?.let { "Town Hall $it" } ?: "Town Hall not available", color = Muted, style = MaterialTheme.typography.bodyMedium)
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Surface(Modifier.size(8.dp), shape = MaterialTheme.shapes.small, color = if (syncState == "Profile synced") Green else Gold) {}
+                                    Surface(Modifier.size(8.dp), shape = MaterialTheme.shapes.small, color = if (syncState.startsWith("Profile synced")) Green else Gold) {}
                                     Text(syncState, color = Muted, style = MaterialTheme.typography.bodySmall)
                                 }
                                 Text(villageStatus, color = Muted, style = MaterialTheme.typography.bodySmall)
@@ -250,7 +264,15 @@ class MainActivity : ComponentActivity() {
                                     label = { Text(if (tokenConfigured) "Replace API token (optional)" else "Supercell API token") },
                                     singleLine = true, enabled = !syncing, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth()
                                 )
-                                Text(if (tokenConfigured) "Token encrypted on this device with Android Keystore." else "Create a developer token and allowlist your public IP.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                                Text(
+                                    when {
+                                        tokenUnreadable -> "Stored token could not be decrypted — re-enter it and save to restore sync."
+                                        tokenConfigured -> "Token encrypted on this device with Android Keystore."
+                                        else -> "Create a developer token and allowlist your public IP."
+                                    },
+                                    color = if (tokenUnreadable) MaterialTheme.colorScheme.error else Muted,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
                                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                                     Button(onClick = {
                                         val normalized = PlayerIdentity.normalizeTag(tag)
@@ -265,6 +287,7 @@ class MainActivity : ComponentActivity() {
                                                 }
                                                 apiToken = ""
                                                 tokenConfigured = true
+                                                tokenUnreadable = false
                                             }
                                             settings.edit().putString("player_tag", normalized).apply()
                                             SyncWorker.enqueuePeriodic(this@MainActivity)
@@ -277,7 +300,11 @@ class MainActivity : ComponentActivity() {
                                         if (normalized == null) {
                                             syncState = "Enter a valid Player Tag"
                                         } else if (tokenStore.read().isNullOrBlank() && apiToken.isBlank()) {
-                                            syncState = "Add an API token first"
+                                            syncState = if (tokenStore.hasStoredToken()) {
+                                                "Stored API token is unreadable — re-enter it"
+                                            } else {
+                                                "Add an API token first"
+                                            }
                                         } else {
                                             if (apiToken.isNotBlank()) {
                                                 if (runCatching { tokenStore.save(apiToken) }.isFailure) {
@@ -286,6 +313,7 @@ class MainActivity : ComponentActivity() {
                                                 }
                                                 apiToken = ""
                                                 tokenConfigured = true
+                                                tokenUnreadable = false
                                             }
                                             settings.edit().putString("player_tag", normalized).apply()
                                             startProfileSync(normalized)

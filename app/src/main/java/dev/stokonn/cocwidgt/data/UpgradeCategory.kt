@@ -13,13 +13,13 @@ package dev.stokonn.cocwidgt.data
  *    (Builder's Apprentice, Lab Assistant, Prospector)
  *  - [OTHER] - anything that does not fit the categories above (kept visible, never dropped)
  */
-enum class UpgradeCategory(val label: String, val order: Int) {
-    BUILDINGS("Buildings & Traps", 10),
-    HEROES("Heroes & Equipment", 20),
-    TROOPS("Troops & Research", 30),
-    PETS("Pets", 40),
-    GOBLIN("Goblin / Builder", 50),
-    OTHER("Other", 90),
+enum class UpgradeCategory(val label: String, val shortLabel: String, val order: Int) {
+    BUILDINGS("Buildings & Traps", "Build", 10),
+    HEROES("Heroes & Equipment", "Heroes", 20),
+    TROOPS("Troops & Research", "Troops", 30),
+    PETS("Pets", "Pets", 40),
+    GOBLIN("Goblin / Builder", "Goblin", 50),
+    OTHER("Other", "Other", 90),
     ;
 
     companion object {

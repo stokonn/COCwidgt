@@ -4,13 +4,13 @@ COCwidgt is an unofficial Android home-screen companion for Clash of Clans. Vers
 
 ## What it shows
 
-- A resizable Glance widget that adapts content to its actual width and height: one, two or three columns depending on the real widget size, each listing whole upgrade categories (Buildings & Traps, Heroes & Equipment, Troops & Research, Pets, Goblin / Builder, Other) as visually distinct blocks in a fixed order.
-- Player name, tag and Town Hall from the official API and/or export. The nickname comes from an API profile sync that is scheduled automatically on every app launch (15-minute WorkManager worker) and runs only against the saved Player Tag — a profile for another tag is never displayed.
+- A resizable Glance widget styled after the supplied visual reference: warm dark brown rounded surface, player header with avatar, Player Tag, Town Hall and a Sync chip, category sections with counts and green "+ Goblin" markers, green rounded progress rows (the progress bar is the row: dark track with a green fill from absolute-timestamp progress) carrying icons, names, target levels and countdowns, plus a bottom status area with quick chips and the last successful sync time. One, two or three columns depending on the real widget size, each listing whole upgrade categories (Buildings & Traps, Heroes & Equipment, Troops & Research, Pets, Goblin / Builder, Other) as visually distinct blocks in a fixed order. Text and bars are fitted to the measured widget width (ellipsized headings, names and status labels), so long names and progress bars never overlap the neighbouring column.
+- Player name, tag and Town Hall from the official API and/or export. The nickname comes from an API profile sync that is scheduled automatically on every app launch (15-minute WorkManager worker). The header, the sync worker and the widget all resolve the target Player Tag with the same chain (saved settings tag → imported export → stored profile), and the stored error is attributed to the tag it belongs to — a profile for another tag is never displayed and the placeholder only appears when no valid name exists at all.
 - Active builder, laboratory, hero equipment, pet, goblin and Builder Base upgrades with local countdowns. Goblin Builder / Goblin Researcher rows and helper entities (Builder's Apprentice, Lab Assistant, Prospector) form their own **Goblin / Builder** column.
-- Progress bars derived from real timestamps, plus export age and a stale marker after 24 hours.
+- Progress bars are the green fill of each rounded row and derive from real timestamps; the bottom status shows the export age (with a stale marker after 24 hours) and the last successful API sync as a relative time recomputed on every render.
 - Import parsing by stable game data ID: every top-level array of the export is read (not a fixed whitelist), and IDs without a catalogue entry are labelled explicitly as `Unknown game item (ID …)` instead of being dropped.
-- Optional Supercell API profile sync; the API does not provide live upgrade timers.
-- Periodic widget refresh (15 minutes) so countdowns and progress bars keep advancing without per-second updates.
+- Optional Supercell API profile sync; the API does not provide live upgrade timers. Failures are classified (offline, rate limit, token rejected, tag mismatch, unreadable token) and shown as short status labels in the widget and in full in the app, with the last successful sync time always visible.
+- Periodic widget refresh (15 minutes) so countdowns and progress bars keep advancing without per-second updates. Local UI re-render (WorkManager periodic worker, KEEP policy) and API synchronization (separate periodic SyncWorker) are independent: the widget can re-render without hitting the API, and a failed API sync is retried on the next run instead of being left stuck.
 
 The village export supplies levels and remaining upgrade timers. An export timer is the **remaining seconds at the export timestamp**; the app calculates the finish instant as `timestamp + timer`. Old exports therefore show elapsed timers as ready. The export does not include each upgrade's original total duration, so COCwidgt does not show a made-up percentage of a guessed total: progress bars run from the **first moment the running timer was observed** (the first import that saw the upgrade) to the computed finish instant. Re-importing the same running upgrade keeps that first observation, so progress never jumps backwards; a genuinely changed timer or a different player tag starts a fresh window. When timestamps are missing or invalid, no progress bar is shown.
 
@@ -52,14 +52,14 @@ Android Studio can also open and build the project.
 
 ## Signed release
 
-The v0.4.0 release workflow is retained for that existing release. A v0.5.0 release must wait until the widget redesign is reviewed on a phone. Configure these GitHub Actions repository secrets before a future signed release:
+The v0.4.0 release workflow is retained for that existing release. Signed v0.5.0 builds use the same GitHub Actions secrets as v0.4.0:
 
 - `RELEASE_KEYSTORE_BASE64`: base64-encoded Android release keystore.
 - `RELEASE_STORE_PASSWORD`: keystore password.
 - `RELEASE_KEY_ALIAS`: signing key alias.
 - `RELEASE_KEY_PASSWORD`: signing key password.
 
-The workflow fails before the build if any secret is missing, verifies the APK signature, publishes it as a GitHub prerelease with a SHA-256 file, then downloads and compares the uploaded APK. Keep the keystore and passwords out of Git and workflow logs. For local release builds, provide the same values as environment variables (`RELEASE_STORE_FILE`, `RELEASE_STORE_PASSWORD`, `RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD`).
+The v0.5.0 workflow fails before the build if any secret is missing, verifies the APK signature with `apksigner`, and uploads the signed `cocw0.5.0.apk` as a build artifact for manual verification before the GitHub Release is created. Keep the keystore and passwords out of Git and workflow logs. For local release builds, provide the same values as environment variables (`RELEASE_STORE_FILE`, `RELEASE_STORE_PASSWORD`, `RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD`).
 
 ## Known limitations
 
@@ -67,5 +67,6 @@ The workflow fails before the build if any secret is missing, verifies the APK s
 - Upgrade totals are not present in the export. Countdowns are accurate, and progress bars use the first-observed start to the absolute finish instant; no percentage is computed against a guessed total duration.
 - Progress bars appear only for upgrades first imported while running. An upgrade imported for the first time after it started cannot know its true start, so its bar begins at the first import.
 - Widget countdown refresh relies on WorkManager's periodic worker (15 minutes) and the launcher's own update period; exact cadence is launcher-dependent and needs device testing.
+- The widget's visual match to the reference design and the absence of overlaps have been verified by measurement-based layout code and unit tests, not yet on a physical device — launcher-specific rendering still needs a final on-device check.
 - Export data is a manual snapshot. The official API cannot refresh building levels or live upgrade timers.
 - API key IP allowlisting may make sync unavailable on changing networks.

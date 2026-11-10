@@ -95,9 +95,16 @@ class ClashApi(private val context: Context) {
         editor.apply()
     }
 
-    fun saveError(message: String) {
+    /**
+     * Records the last sync failure. [tag] is the Player Tag the sync ran for (already
+     * canonical, or null when none could be resolved) so [PlayerIdentity.headerState] can
+     * surface the error only on the header it belongs to.
+     */
+    fun saveError(message: String, tag: String? = null) {
         context.getSharedPreferences(PlayerProfileCodec.PREFS, Context.MODE_PRIVATE).edit()
-            .putString(PlayerProfileCodec.SYNC_ERROR_KEY, message.take(160)).apply()
+            .putString(PlayerProfileCodec.SYNC_ERROR_KEY, message.take(160))
+            .putString(PlayerProfileCodec.SYNC_ERROR_TAG_KEY, tag.orEmpty())
+            .apply()
     }
 }
 class ApiException(val status: Int, message: String) : Exception(message)

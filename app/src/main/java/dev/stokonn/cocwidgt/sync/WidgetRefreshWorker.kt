@@ -32,7 +32,9 @@ class WidgetRefreshWorker(context: Context, params: WorkerParameters) : Coroutin
         fun enqueue(context: Context) {
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 UNIQUE_NAME,
-                ExistingPeriodicWorkPolicy.UPDATE,
+                // KEEP: never resets an already-scheduled periodic refresh back to 0 (UPDATE
+                // would), so repeated launches cannot postpone the next re-render indefinitely.
+                ExistingPeriodicWorkPolicy.KEEP,
                 PeriodicWorkRequestBuilder<WidgetRefreshWorker>(REFRESH_MINUTES, TimeUnit.MINUTES).build()
             )
         }

@@ -114,4 +114,75 @@ class PlayerIdentityTest {
             ).displayName,
         )
     }
+
+    @Test
+    fun headerStateResolvesTheSettingsTagFirstLikeTheSyncDoes() {
+        // The settings tag is written on every import and every explicit save, so it always
+        // reflects the latest user intent. SyncWorker uses the identical order (input tag →
+        // settings → export → stored profile), so the stored profile lands under exactly the
+        // tag this header asks for — otherwise the nickname would be filed under a tag the
+        // header never displays and would silently fall back to the placeholder.
+        val profile = StoredProfile("#2PP", "Alice", 16, 1_000L, null)
+        val state = PlayerIdentity.headerState(
+            exportTag = "#2RR", exportName = null, exportTownHall = 15,
+            settingsTag = "#2PP", profile = profile,
+        )
+        assertEquals("#2PP", state.expectedTag)
+        assertEquals("Alice", state.displayName)
+        assertEquals(true, state.profileMatches)
+        // The export still contributes its town hall for the displayed player.
+        assertEquals(15, state.townHall)
+    }
+
+    @Test
+    fun headerStateFallsBackToExportThenStoredProfileInThatOrder() {
+        // No settings tag: the export defines the player (same order as the sync chain).
+        val fromExport = PlayerIdentity.headerState(
+            exportTag = "#2RR", exportName = null, exportTownHall = 0,
+            settingsTag = null, profile = StoredProfile("#2RR", "Bob", 14, 2_000L, null),
+        )
+        assertEquals("#2RR", fromExport.expectedTag)
+        assertEquals("Bob", fromExport.displayName)
+        // No settings, no export: only the stored profile identifies the player.
+        val fromProfile = PlayerIdentity.headerState(
+            exportTag = null, exportName = null, exportTownHall = 0,
+            settingsTag = "bad tag", profile = StoredProfile("#2PP", "Alice", 16, 1_000L, null),
+        )
+        assertEquals("#2PP", fromProfile.expectedTag)
+        assertEquals("Alice", fromProfile.displayName)
+    }
+
+    @Test
+    fun headerStateSurfacesErrorsAttributedToTheDisplayedTagOnly() {
+        // Error recorded while syncing the displayed tag → visible, even alongside a name.
+        val errored = StoredProfile("#2PP", "Alice", 16, 1_000L, "API rate limit reached. Try later.", "#2PP")
+        val matched = PlayerIdentity.headerState("#2PP", "", 0, "#2PP", errored)
+        assertEquals("API rate limit reached. Try later.", matched.apiError)
+
+        // The header now displays another player → the old player's error stays hidden.
+        val other = PlayerIdentity.headerState("#2RR", "", 0, "#2RR", errored)
+        assertEquals("#2RR", other.expectedTag)
+        assertEquals("", other.apiError)
+
+        // Sync failed for the displayed tag before any profile existed → error still shown
+        // instead of a misleading generic "not synced".
+        val failedSync = StoredProfile(null, null, -1, 0L, "Player not found. Check the tag.", "#2RR")
+        val shown = PlayerIdentity.headerState(null, null, 0, "#2RR", failedSync)
+        assertEquals("Player not found. Check the tag.", shown.apiError)
+        assertEquals(false, shown.profileMatches)
+
+        // Unattributed error (no tag could be resolved, e.g. settings missing) is always shown.
+        val unattributed = StoredProfile(null, null, -1, 0L, "Add your Player Tag and API token in app settings.", null)
+        assertEquals(
+            "Add your Player Tag and API token in app settings.",
+            PlayerIdentity.headerState(null, null, 0, null, unattributed).apiError,
+        )
+
+        // No error stored → nothing is shown for any tag.
+        assertEquals("", PlayerIdentity.headerState("#2PP", null, 0, "#2PP", errored.copy(syncError = null, syncErrorTag = null)).apiError)
+
+        // Unattributed legacy error attached to another player's profile stays on that player.
+        val legacy = StoredProfile("#2PP", "Alice", 16, 1_000L, "API down")
+        assertEquals("", PlayerIdentity.headerState("#2RR", "", 0, "#2RR", legacy).apiError)
+    }
 }

@@ -81,5 +81,45 @@ class PlayerProfilePersistenceTest {
         assertEquals("Barbarian King · 95|Archer Queen · 93", values["heroes"])
         assertEquals(1_000L, values["synced_at"])
         assertEquals("", values[PlayerProfileCodec.SYNC_ERROR_KEY])
+        assertEquals("", values[PlayerProfileCodec.SYNC_ERROR_TAG_KEY])
+    }
+
+    @Test fun syncErrorRoundTripsTogetherWithItsAttributionTag() {
+        val stored = PlayerProfileCodec.decode(
+            PlayerProfileCodec.encode(snapshot()) + mapOf(
+                PlayerProfileCodec.SYNC_ERROR_KEY to "API rate limit reached. Try later.",
+                PlayerProfileCodec.SYNC_ERROR_TAG_KEY to " y2099vgpj ",
+            )
+        )
+        assertEquals("API rate limit reached. Try later.", stored.syncError)
+        // Attribution is canonicalized exactly like every other stored tag.
+        assertEquals("#Y2099VGPJ", stored.syncErrorTag)
+
+        // An error without an attribution tag degrades to "unattributed", which the header
+        // shows instead of hiding the failure forever.
+        val unattributed = PlayerProfileCodec.decode(
+            PlayerProfileCodec.encode(snapshot()) +
+                mapOf(PlayerProfileCodec.SYNC_ERROR_KEY to "Add your Player Tag and API token in app settings.")
+        )
+        assertEquals("Add your Player Tag and API token in app settings.", unattributed.syncError)
+        assertNull(unattributed.syncErrorTag)
+
+        // An unusable attribution tag is treated the same way — never trusted blindly.
+        val brokenTag = PlayerProfileCodec.decode(
+            PlayerProfileCodec.encode(snapshot()) +
+                mapOf(PlayerProfileCodec.SYNC_ERROR_KEY to "boom", PlayerProfileCodec.SYNC_ERROR_TAG_KEY to "bad tag!")
+        )
+        assertNull(brokenTag.syncErrorTag)
+    }
+
+    @Test fun successfulSyncClearsTheStaleErrorAndItsTag() {
+        // encode() is what ClashApi.saveSnapshot writes on success: both the failure message
+        // and its attribution must be wiped, or a resolved error would keep surfacing.
+        val values = PlayerProfileCodec.encode(snapshot())
+        assertEquals("", values[PlayerProfileCodec.SYNC_ERROR_KEY])
+        assertEquals("", values[PlayerProfileCodec.SYNC_ERROR_TAG_KEY])
+        val decoded = PlayerProfileCodec.decode(values)
+        assertNull(decoded.syncError)
+        assertNull(decoded.syncErrorTag)
     }
 }

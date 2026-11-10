@@ -31,12 +31,22 @@ object PlayerIdentity {
 
     /**
      * Everything the player header (activity card and Glance widget) needs, resolved once from
-     * the same identity rules: the export, the saved settings tag and the stored API profile.
+     * the same identity rules the sync uses: the saved settings tag first (it is written on
+     * every import and on every explicit save, so it always reflects the latest user intent),
+     * then the imported export, then the stored API profile. Using one identical chain for the
+     * header and for [dev.stokonn.cocwidgt.sync.SyncWorker] is what guarantees the stored
+     * profile is filed under exactly the tag the header expects — otherwise the nickname can
+     * silently belong to a tag the header never asks for and falls back to the placeholder.
      *
      * [PlayerHeaderState.displayName] is the stored API nickname for the matching Player Tag,
      * the export name when it carries one, and [PlayerHeaderState.FALLBACK_NAME] otherwise —
      * a nickname from another player's profile is never displayed, and an incomplete stored
      * profile (no valid tag) never contributes a name at all.
+     *
+     * [PlayerHeaderState.apiError] surfaces the last sync failure whenever it belongs to the
+     * tag on display — attributed by [StoredProfile.syncErrorTag], or unattributed while no
+     * stored profile claims a different player — so a failed sync is visible instead of being
+     * hidden behind a stale "not synced" state.
      */
     fun headerState(
         exportTag: String?,
@@ -45,11 +55,21 @@ object PlayerIdentity {
         settingsTag: String?,
         profile: StoredProfile,
     ): PlayerHeaderState {
-        val expectedTag = firstValidTag(exportTag, settingsTag, profile.tag)
+        val expectedTag = firstValidTag(settingsTag, exportTag, profile.tag)
         val profileMatches = expectedTag != null && profile.tag == expectedTag
         val displayName = matchingName(
             expectedTag, profile.tag, profile.name, exportTag, exportName
         ) ?: PlayerHeaderState.FALLBACK_NAME
+        val storedError = profile.syncError?.trim().orEmpty()
+        val errorVisible = storedError.isNotEmpty() && when {
+            profileMatches -> true
+            // Attributed: only the header for that exact Player Tag shows it.
+            profile.syncErrorTag != null -> profile.syncErrorTag == expectedTag
+            // Unattributed (legacy record or no tag resolved at all): shown only while no
+            // stored profile claims a different player — so a global "add your settings"
+            // error is never swallowed, but another player's legacy failure stays hidden.
+            else -> profile.tag == null
+        }
         return PlayerHeaderState(
             displayName = displayName,
             expectedTag = expectedTag,
@@ -60,7 +80,7 @@ object PlayerIdentity {
             },
             profileMatches = profileMatches,
             apiSyncedAt = if (profileMatches) profile.syncedAt else 0L,
-            apiError = if (profileMatches) profile.syncError.orEmpty() else "",
+            apiError = if (errorVisible) storedError else "",
         )
     }
 }
@@ -81,13 +101,18 @@ data class PlayerHeaderState(
     }
 }
 
-/** Stored API profile as restored from preferences. */
+/**
+ * Stored API profile as restored from preferences. [syncErrorTag] attributes the last
+ * [syncError] to the Player Tag the failing sync ran for, so an error recorded for one player
+ * is never shown on another player's header.
+ */
 data class StoredProfile(
     val tag: String?,
     val name: String?,
     val townHall: Int,
     val syncedAt: Long,
     val syncError: String?,
+    val syncErrorTag: String? = null,
 )
 
 /**
@@ -110,6 +135,7 @@ object PlayerProfileCodec {
     private const val HEROES_KEY = "heroes"
     private const val SYNCED_AT_KEY = "synced_at"
     const val SYNC_ERROR_KEY = "sync_error"
+    const val SYNC_ERROR_TAG_KEY = "sync_error_tag"
 
     fun encode(snapshot: PlayerSnapshot): Map<String, Any> {
         val tag = PlayerIdentity.normalizeTag(snapshot.tag)
@@ -124,7 +150,9 @@ object PlayerProfileCodec {
             WAR_STARS_KEY to (snapshot.warStars ?: -1),
             HEROES_KEY to snapshot.heroes.joinToString("|"),
             SYNCED_AT_KEY to snapshot.syncedAt,
+            // A successful sync clears any previous failure and its attribution.
             SYNC_ERROR_KEY to "",
+            SYNC_ERROR_TAG_KEY to "",
         )
     }
 
@@ -136,12 +164,21 @@ object PlayerProfileCodec {
     fun decode(values: Map<String, Any?>): StoredProfile {
         val tag = PlayerIdentity.firstValidTag(values[TAG_KEY] as? String, values[LEGACY_TAG_KEY] as? String)
         val name = if (tag == null) null else PlayerIdentity.usableName(values[NAME_KEY] as? String)
+        val syncError = (values[SYNC_ERROR_KEY] as? String)?.takeIf { it.isNotBlank() }
+        // A stored error without a parseable attribution tag degrades to "unattributed",
+        // which [PlayerIdentity.headerState] shows instead of hiding forever.
+        val syncErrorTag = if (syncError == null) {
+            null
+        } else {
+            PlayerIdentity.normalizeTag(values[SYNC_ERROR_TAG_KEY] as? String)
+        }
         return StoredProfile(
             tag = tag,
             name = name,
             townHall = (values[TOWN_HALL_KEY] as? Number)?.toInt() ?: -1,
             syncedAt = (values[SYNCED_AT_KEY] as? Number)?.toLong() ?: 0L,
-            syncError = (values[SYNC_ERROR_KEY] as? String)?.takeIf { it.isNotBlank() },
+            syncError = syncError,
+            syncErrorTag = syncErrorTag,
         )
     }
 }
