@@ -1,0 +1,84 @@
+name: Signed Android release v0.5.0
+
+# Builds the signed v0.5.0 release APK and publishes it as a build artifact only.
+# The GitHub Release itself is created manually after the artifact has been
+# downloaded and its signature verified against the v0.4.0 release certificate.
+# Signing configuration in the Gradle build is unchanged; the existing
+# RELEASE_* repository secrets are used, exactly like the v0.4.0 workflow.
+
+on:
+  push:
+    tags: ["v0.5.0"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out tagged commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Java 17
+        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+        with:
+          packages: platform-tools
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@06832c7b30a0129d7fb559bcc6e43d26f6374244 # v4.3.1
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Validate signing secrets
+        env:
+          STORE: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          test -n "$STORE" && test -n "$STORE_PASSWORD" && test -n "$KEY_ALIAS" && test -n "$KEY_PASSWORD" || {
+            echo "Missing release signing secrets. Configure RELEASE_KEYSTORE_BASE64, RELEASE_STORE_PASSWORD, RELEASE_KEY_ALIAS and RELEASE_KEY_PASSWORD." >&2
+            exit 1
+          }
+          umask 077
+          printf '%s' "$STORE" | base64 --decode > "$RUNNER_TEMP/cocwidgt-release.jks"
+          test -s "$RUNNER_TEMP/cocwidgt-release.jks"
+
+      - name: Run verification and build signed APK
+        env:
+          RELEASE_STORE_FILE: ${{ runner.temp }}/cocwidgt-release.jks
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          ./gradlew testDebugUnitTest lintDebug assembleDebug assembleRelease
+          apk="app/build/outputs/apk/release/app-release.apk"
+          test -s "$apk"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk"
+
+          badging="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk")"
+          printf '%s\n' "$badging" | sed -n '/^package:/p'
+          printf '%s\n' "$badging" | grep -Fq "package: name='dev.stokonn.cocwidgt' versionCode='5' versionName='0.5.0'"
+
+          cp "$apk" cocw0.5.0.apk
+          sha256sum cocw0.5.0.apk > SHA256SUMS.txt
+
+      - name: Upload signed cocw0.5.0.apk artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cocw0.5.0-apk
+          path: |
+            cocw0.5.0.apk
+            SHA256SUMS.txt
+          if-no-files-found: error
