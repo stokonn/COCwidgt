@@ -6,6 +6,16 @@ import java.util.Locale
 object PlayerIdentity {
     fun firstValidTag(vararg values: String?): String? = values.firstNotNullOfOrNull(::normalizeTag)
 
+    fun requireImportMatchesConfiguredTag(configuredTag: String?, importedTag: String): String {
+        val imported = normalizeTag(importedTag)
+            ?: throw IllegalArgumentException("Import is missing a valid Player Tag.")
+        val configured = normalizeTag(configuredTag)
+        require(configured == null || configured == imported) {
+            "Export Player Tag $imported does not match configured Player Tag $configured. Existing village data was kept."
+        }
+        return imported
+    }
+
     fun normalizeTag(value: String?): String? {
         val compact = value.orEmpty().trim().uppercase(Locale.ROOT)
         val body = compact.removePrefix("#")
@@ -18,6 +28,24 @@ object PlayerIdentity {
      */
     fun usableName(value: String?): String? = value?.trim()?.takeIf {
         it.isNotEmpty() && !it.equals("null", ignoreCase = true)
+    }
+
+    /** Names accepted for a local import; legacy API profile nicknames are intentionally excluded. */
+    fun importedDisplayName(expectedTag: String?, exportTag: String?, exportName: String?, manualName: String?): String {
+        val matchingExportName = if (normalizeTag(expectedTag) == normalizeTag(exportTag)) usableName(exportName) else null
+        return matchingExportName ?: usableName(manualName) ?: PlayerHeaderState.FALLBACK_NAME
+    }
+
+    fun displayName(
+        expectedTag: String?, apiTag: String?, apiName: String?, exportTag: String?, exportName: String?,
+        manualTag: String?, manualName: String?,
+    ): String {
+        val expected = normalizeTag(expectedTag)
+        if (expected == null) return PlayerHeaderState.FALLBACK_NAME
+        val manual = if (normalizeTag(manualTag) == expected) usableName(manualName) else null
+        val api = if (normalizeTag(apiTag) == expected) usableName(apiName) else null
+        val export = if (normalizeTag(exportTag) == expected) usableName(exportName) else null
+        return manual ?: api ?: export ?: expected
     }
 
     fun matchingName(

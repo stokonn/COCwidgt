@@ -6,6 +6,27 @@ import org.junit.Test
 
 class PlayerIdentityTest {
 
+    @Test fun importedAndManualNamesAreBoundToTheConfiguredPlayer() {
+        assertEquals("Export Name", PlayerIdentity.importedDisplayName("#Y2099VGPJ", " y2099vgpj ", " Export Name ", "Manual Name"))
+        assertEquals("Manual Name", PlayerIdentity.importedDisplayName("#Y2099VGPJ", "#OTHER123", "Stale Export Name", "Manual Name"))
+        assertEquals(PlayerHeaderState.FALLBACK_NAME, PlayerIdentity.importedDisplayName("#Y2099VGPJ", "#OTHER123", "Stale Export Name", "null"))
+        assertEquals("Manual Name", PlayerIdentity.importedDisplayName("#Y2099VGPJ", "#Y2099VGPJ", "null", "Manual Name"))
+    }
+
+    @Test fun importTagIsCanonicalizedAndMismatchIsRejected() {
+        assertEquals("#Y2099VGPJ", PlayerIdentity.requireImportMatchesConfiguredTag(" y2099vgpj ", "#Y2099VGPJ"))
+        assertEquals("#Y2099VGPJ", PlayerIdentity.requireImportMatchesConfiguredTag(null, "y2099vgpj"))
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            PlayerIdentity.requireImportMatchesConfiguredTag("#OTHER123", "#Y2099VGPJ")
+        }
+    }
+
+    @Test fun playerDisplayUsesOnlyMatchingApiOrImportIdentityAndFallsBackToTag() {
+        assertEquals("Alice", PlayerIdentity.displayName("#Y2099VGPJ", "#Y2099VGPJ", "Alice", "#Y2099VGPJ", null, null, null))
+        assertEquals("#Y2099VGPJ", PlayerIdentity.displayName("#Y2099VGPJ", "#OTHER123", "Wrong", "#OTHER123", "Stale", null, null))
+        assertEquals("Manual", PlayerIdentity.displayName("#Y2099VGPJ", null, null, "#Y2099VGPJ", null, "#Y2099VGPJ", "Manual"))
+    }
+
     @Test
     fun firstValidTagPrefersTheFirstValidCandidate() {
         assertEquals("#2PP", PlayerIdentity.firstValidTag("#2PP", "#2RR"))

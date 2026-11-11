@@ -1,16 +1,16 @@
 # COCwidgt
 
-COCwidgt is an unofficial Android home-screen companion for Clash of Clans. Version **0.5.0** (`versionCode` 5) combines the official player profile API with local village export data. It is not affiliated with Supercell.
+COCwidgt is an unofficial Android home-screen companion for Clash of Clans. Version **0.5.1** (`versionCode` 6) uses local village export data. It is not affiliated with Supercell.
 
 ## What it shows
 
-- A resizable Glance widget styled after the supplied visual reference: warm dark brown rounded surface, player header with avatar, Player Tag, Town Hall and a Sync chip, category sections with counts and green "+ Goblin" markers, green rounded progress rows (the progress bar is the row: dark track with a green fill from absolute-timestamp progress) carrying icons, names, target levels and countdowns, plus a bottom status area with quick chips and the last successful sync time. One, two or three columns depending on the real widget size, each listing whole upgrade categories (Buildings & Traps, Heroes & Equipment, Troops & Research, Pets, Goblin / Builder, Other) as visually distinct blocks in a fixed order. Text and bars are fitted to the measured widget width (ellipsized headings, names and status labels), so long names and progress bars never overlap the neighbouring column.
-- Player name, tag and Town Hall from the official API and/or export. The nickname comes from an API profile sync that is scheduled automatically on every app launch (15-minute WorkManager worker). The header, the sync worker and the widget all resolve the target Player Tag with the same chain (saved settings tag → imported export → stored profile), and the stored error is attributed to the tag it belongs to — a profile for another tag is never displayed and the placeholder only appears when no valid name exists at all.
+- A resizable Glance widget with a warm dark brown surface, player header, category labels, artwork, upgrade levels, countdowns and progress bars. It uses the current launcher-reported dimensions to show more rows as the widget grows, within one vertical list.
+- Player Tag and Town Hall from the imported export. Player names are optional in exports; a matching official API profile name is cached locally, with manual name entry as an override and Player Tag as the fallback.
 - Active builder, laboratory, hero equipment, pet, goblin and Builder Base upgrades with local countdowns. Goblin Builder / Goblin Researcher rows and helper entities (Builder's Apprentice, Lab Assistant, Prospector) form their own **Goblin / Builder** column.
-- Progress bars are the green fill of each rounded row and derive from real timestamps; the bottom status shows the export age (with a stale marker after 24 hours) and the last successful API sync as a relative time recomputed on every render.
+- Progress bars are the green fill of each rounded row and derive from real timestamps; the bottom status shows the local export age (with a stale marker after 24 hours).
 - Import parsing by stable game data ID: every top-level array of the export is read (not a fixed whitelist), and IDs without a catalogue entry are labelled explicitly as `Unknown game item (ID …)` instead of being dropped.
-- Optional Supercell API profile sync; the API does not provide live upgrade timers. Failures are classified (offline, rate limit, token rejected, tag mismatch, unreadable token) and shown as short status labels in the widget and in full in the app, with the last successful sync time always visible.
-- Periodic widget refresh (15 minutes) so countdowns and progress bars keep advancing without per-second updates. Local UI re-render (WorkManager periodic worker, KEEP policy) and API synchronization (separate periodic SyncWorker) are independent: the widget can re-render without hitting the API, and a failed API sync is retried on the next run instead of being left stuck.
+- The optional Developer API key is used only for the official player profile name request. It is separate from the in-game Data Export ownership token, which is never collected or verified.
+- Periodic widget refresh (15 minutes) so countdowns and progress bars keep advancing without per-second updates. WorkManager refreshes the local widget state independently of app launches.
 
 The village export supplies levels and remaining upgrade timers. An export timer is the **remaining seconds at the export timestamp**; the app calculates the finish instant as `timestamp + timer`. Old exports therefore show elapsed timers as ready. The export does not include each upgrade's original total duration, so COCwidgt does not show a made-up percentage of a guessed total: progress bars run from the **first moment the running timer was observed** (the first import that saw the upgrade) to the computed finish instant. Re-importing the same running upgrade keeps that first observation, so progress never jumps backwards; a genuinely changed timer or a different player tag starts a fresh window. When timestamps are missing or invalid, no progress bar is shown.
 
@@ -21,15 +21,11 @@ The village export supplies levels and remaining upgrade timers. An export timer
 3. Allow clipboard access if Android asks. Check the tag and import status.
 4. Add or resize the COCwidgt widget on your launcher.
 
-Import again after gameplay to refresh building levels and timers. The JSON is parsed and stored on the device; it is not sent to Supercell or another service.
+Import again after gameplay to refresh building levels and timers. Village JSON is parsed and stored on the device and is never sent to Supercell. If a Developer API key is configured, the imported Player Tag is used for a separate official profile name lookup; lookup failure does not affect import or widget data.
 
-## Supercell API setup
+## Developer API player name
 
-1. Create an API key in the official [Clash of Clans developer portal](https://developer.clashofclans.com/).
-2. Allowlist the public egress IP of the network making requests.
-3. Enter your player tag and API token in the app, then save and tap **Sync now**.
-
-The token is encrypted at rest with AES-GCM using an Android Keystore key. API requests can fail on mobile data when the carrier's egress IP is not allowlisted. Never enter a Supercell ID password.
+The optional **Developer API key** setting is encrypted with Android Keystore and sent only to `api.clashofclans.com` over HTTPS to request `GET /v1/players/{playerTag}`. Supercell keys are restricted to allowed public IP addresses, so requests from changing mobile networks may fail. The key is not the in-game Data Export ownership token. No ownership verification is performed. A successful name is cached with its Player Tag; cached names for other tags are not displayed, and village data remains available offline.
 
 ## Catalogue and visual assets
 
@@ -39,7 +35,7 @@ Names and game identifiers are used to identify game entities. Supercell marks a
 
 ## Build and checks
 
-Requirements: JDK 17, Android SDK 35, Gradle 8.9. From the project root:
+Requirements: JDK 17, Android SDK 35, Gradle 9.6.0. From the project root:
 
 ```bash
 ./gradlew testDebugUnitTest
@@ -68,5 +64,5 @@ The v0.5.0 workflow fails before the build if any secret is missing, verifies th
 - Progress bars appear only for upgrades first imported while running. An upgrade imported for the first time after it started cannot know its true start, so its bar begins at the first import.
 - Widget countdown refresh relies on WorkManager's periodic worker (15 minutes) and the launcher's own update period; exact cadence is launcher-dependent and needs device testing.
 - The widget's visual match to the reference design and the absence of overlaps have been verified by measurement-based layout code and unit tests, not yet on a physical device — launcher-specific rendering still needs a final on-device check.
-- Export data is a manual snapshot. The official API cannot refresh building levels or live upgrade timers.
-- API key IP allowlisting may make sync unavailable on changing networks.
+- Export data is a manual snapshot; import again after gameplay to refresh village levels and upgrade timers.
+- Official player-name and ownership verification endpoints are not used. The export may omit the name, so manual entry is available.

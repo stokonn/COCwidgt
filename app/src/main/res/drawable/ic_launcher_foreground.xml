@@ -1,0 +1,21 @@
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:width="72dp"
+        android:height="72dp"
+        android:gravity="center">
+        <shape android:shape="oval">
+            <solid android:color="@color/launcher_icon_frame" />
+            <stroke
+                android:width="3dp"
+                android:color="@color/launcher_icon_gold" />
+        </shape>
+    </item>
+    <item
+        android:width="48dp"
+        android:height="52dp"
+        android:gravity="center">
+        <bitmap
+            android:src="@drawable/coc_buildings_home_village_town_hall_level_17"
+            android:gravity="center" />
+    </item>
+</layer-list>

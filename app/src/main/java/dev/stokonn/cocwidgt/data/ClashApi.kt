@@ -1,7 +1,7 @@
 package dev.stokonn.cocwidgt.data
 
-import android.content.Context
 import org.json.JSONObject
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
@@ -27,11 +27,14 @@ data class PlayerSnapshot(
  */
 object PlayerProfileDto {
     fun parse(body: String, requestedTag: String, syncedAt: Long = System.currentTimeMillis()): PlayerSnapshot {
+        val canonicalRequestedTag = PlayerIdentity.normalizeTag(requestedTag)
+            ?: throw IllegalArgumentException("Enter a valid Player Tag.")
         val json = runCatching { JSONObject(body) }
             .getOrElse { throw IllegalStateException("Clash API returned an unreadable response.") }
-        val responseTag = PlayerIdentity.normalizeTag(json.optString("tag", requestedTag))
+        if (!json.has("tag")) throw IllegalStateException("Clash API response is missing the Player Tag.")
+        val responseTag = PlayerIdentity.normalizeTag(json.optString("tag", canonicalRequestedTag))
             ?: throw IllegalStateException("Clash API returned an invalid Player Tag.")
-        if (responseTag != requestedTag) throw IllegalStateException("Clash API response does not match the requested Player Tag.")
+        if (responseTag != canonicalRequestedTag) throw IllegalStateException("Clash API response does not match the requested Player Tag.")
         val heroes = buildList {
             val array = json.optJSONArray("heroes") ?: return@buildList
             for (i in 0 until array.length()) {
@@ -55,56 +58,51 @@ object PlayerProfileDto {
     }
 }
 
-class ClashApi(private val context: Context) {
-    fun fetchPlayer(tag: String, token: String): PlayerSnapshot {
-        val requestedTag = PlayerIdentity.normalizeTag(tag) ?: throw IllegalArgumentException("Enter a valid Player Tag.")
-        val encodedTag = URLEncoder.encode(requestedTag.removePrefix("#"), "UTF-8")
-        val connection = (URL("https://api.clashofclans.com/v1/players/%23$encodedTag").openConnection() as HttpURLConnection).apply {
+class ApiException(val status: Int, message: String) : IOException(message)
+
+/** Official player-profile lookup. Callers must run this operation off the main thread. */
+class ClashApi {
+    fun fetchPlayer(tag: String, developerApiKey: String): PlayerSnapshot {
+        val normalized = PlayerIdentity.normalizeTag(tag) ?: throw IllegalArgumentException("Enter a valid Player Tag.")
+        require(developerApiKey.isNotBlank()) { "Developer API key is not configured." }
+        val encoded = URLEncoder.encode(normalized.removePrefix("#"), Charsets.UTF_8.name())
+        val connection = (URL("https://api.clashofclans.com/v1/players/%23$encoded").openConnection() as HttpURLConnection).apply {
+            instanceFollowRedirects = false
             requestMethod = "GET"
-            connectTimeout = 15_000
-            readTimeout = 15_000
+            connectTimeout = 10_000
+            readTimeout = 10_000
             setRequestProperty("Accept", "application/json")
-            setRequestProperty("Authorization", "Bearer $token")
+            setRequestProperty("Authorization", "Bearer $developerApiKey")
         }
         try {
-            val status = connection.responseCode
-            val stream = if (status in 200..299) connection.inputStream else connection.errorStream
+            val code = connection.responseCode
+            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
             val body = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-            if (status !in 200..299) {
+            if (code !in 200..299) {
                 val detail = runCatching { JSONObject(body).optString("message") }.getOrNull()
-                throw ApiException(status, detail?.takeIf { it.isNotBlank() } ?: "HTTP $status")
+                throw ApiException(code, detail?.takeIf { it.isNotBlank() } ?: "HTTP $code")
             }
-            return PlayerProfileDto.parse(body, requestedTag)
+            return PlayerProfileDto.parse(body, normalized)
         } finally {
             connection.disconnect()
         }
     }
+}
 
-    fun saveSnapshot(snapshot: PlayerSnapshot) {
-        // Pure codec: throws for an invalid tag instead of persisting a mislabelled profile.
-        val values = PlayerProfileCodec.encode(snapshot)
-        val editor = context.getSharedPreferences(PlayerProfileCodec.PREFS, Context.MODE_PRIVATE).edit()
-        values.forEach { (key, value) ->
-            when (value) {
-                is String -> editor.putString(key, value)
-                is Int -> editor.putInt(key, value)
-                is Long -> editor.putLong(key, value)
-                else -> throw IllegalArgumentException("Unsupported profile value for '$key'.")
-            }
+/** Safe user-facing classification; exception text and credentials are never exposed. */
+object ApiFailureMessage {
+    fun forError(error: Throwable): String = when (error) {
+        is ApiException -> when (error.status) {
+            400 -> "Invalid player tag or request."
+            401 -> "Developer API key rejected. Check the key in settings."
+            403 -> "API key access denied. Check its allowed public IP address."
+            404 -> "Player not found for this tag."
+            429 -> "API rate limit reached. Try again later."
+            in 500..599 -> "Clash API server error. Village data remains available offline."
+            else -> "Clash API request failed (${error.status})."
         }
-        editor.apply()
-    }
-
-    /**
-     * Records the last sync failure. [tag] is the Player Tag the sync ran for (already
-     * canonical, or null when none could be resolved) so [PlayerIdentity.headerState] can
-     * surface the error only on the header it belongs to.
-     */
-    fun saveError(message: String, tag: String? = null) {
-        context.getSharedPreferences(PlayerProfileCodec.PREFS, Context.MODE_PRIVATE).edit()
-            .putString(PlayerProfileCodec.SYNC_ERROR_KEY, message.take(160))
-            .putString(PlayerProfileCodec.SYNC_ERROR_TAG_KEY, tag.orEmpty())
-            .apply()
+        is java.net.UnknownHostException, is java.net.SocketTimeoutException, is IOException ->
+            "Network unavailable or timed out. Village data remains available offline."
+        else -> "Player name lookup failed. Village data remains available offline."
     }
 }
-class ApiException(val status: Int, message: String) : Exception(message)

@@ -49,6 +49,9 @@ class ClashApiDtoTest {
         assertThrows(IllegalStateException::class.java) {
             PlayerProfileDto.parse("""{"tag":"bad tag!","name":"Alice"}""", "#Y2099VGPJ")
         }
+        assertThrows(IllegalStateException::class.java) {
+            PlayerProfileDto.parse("""{"name":"Alice"}""", "#Y2099VGPJ")
+        }
     }
 
     @Test fun absentOptionalFieldsStayNullInsteadOfZero() {
@@ -57,5 +60,24 @@ class ClashApiDtoTest {
         assertEquals(null, snapshot.expLevel)
         assertEquals(null, snapshot.trophies)
         assertEquals(emptyList<String>(), snapshot.heroes)
+    }
+
+    @Test fun apiFailuresAreClassifiedWithoutExposingResponseOrCredentialText() {
+        assertEquals("Developer API key rejected. Check the key in settings.", ApiFailureMessage.forError(ApiException(401, "secret-bearing server detail")))
+        assertEquals("API key access denied. Check its allowed public IP address.", ApiFailureMessage.forError(ApiException(403, "blocked")))
+        assertEquals("API rate limit reached. Try again later.", ApiFailureMessage.forError(ApiException(429, "limit")))
+        assertEquals("Network unavailable or timed out. Village data remains available offline.", ApiFailureMessage.forError(java.net.SocketTimeoutException("timeout")))
+        assertEquals("Network unavailable or timed out. Village data remains available offline.", ApiFailureMessage.forError(java.net.UnknownHostException("offline")))
+    }
+
+    @Test fun playerNameCacheIsBoundToItsCanonicalTagAndRejectsEmptyNames() {
+        val snapshot = PlayerProfileDto.parse(body, "#Y2099VGPJ", syncedAt = 1_000L)
+        val encoded = PlayerNameCache.encode(snapshot)
+        assertEquals("Alice", PlayerNameCache.nameFor(encoded, " y2099vgpj "))
+        assertEquals(null, PlayerNameCache.nameFor(encoded, "#OTHER123"))
+        assertEquals(null, PlayerNameCache.nameFor(encoded, "bad tag"))
+        assertThrows(IllegalArgumentException::class.java) {
+            PlayerNameCache.encode(snapshot.copy(name = " "))
+        }
     }
 }

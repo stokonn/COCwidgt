@@ -1,6 +1,5 @@
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
 android {
@@ -10,8 +9,8 @@ android {
         applicationId = "dev.stokonn.cocwidgt"
         minSdk = 29
         targetSdk = 35
-        versionCode = 5
-        versionName = "0.5.0"
+        versionCode = 6
+        versionName = "0.5.1"
     }
     val releaseStoreFile = providers.environmentVariable("RELEASE_STORE_FILE").orNull
     val releaseStorePassword = providers.environmentVariable("RELEASE_STORE_PASSWORD").orNull
@@ -39,7 +38,11 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "17" }
+}
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
 }
 dependencies {
     implementation("androidx.activity:activity-compose:1.10.0")

@@ -28,7 +28,9 @@ data class VillageJob(
     val goblin: Boolean? = null,
     val dataId: Long = -1,
     val iconKey: String = "unknown",
-    val totalDurationMs: Long? = null
+    val totalDurationMs: Long? = null,
+    val count: Int = 1,
+    val currentLevel: Int? = null,
 ) {
     fun finishAt(): Long = startedAt + remainingAtExportMs
 
@@ -65,6 +67,7 @@ data class VillageSnapshot(val tag: String, val name: String, val townHall: Int,
             put("startedAt", job.startedAt); put("durationMs", job.remainingAtExportMs)
             if (job.goblin != null) put("goblin", job.goblin)
             put("dataId", job.dataId); put("iconKey", job.iconKey); put("totalDurationMs", job.totalDurationMs)
+            put("cnt", job.count); put("currentLevel", job.currentLevel)
         }) }
         val normalizedTag = requireNotNull(PlayerIdentity.normalizeTag(tag)) { "Cannot save a village without a valid Player Tag." }
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("tag", normalizedTag).putString("name", name.trim())
@@ -114,7 +117,9 @@ data class VillageSnapshot(val tag: String, val name: String, val townHall: Int,
                     j.getLong("startedAt"), j.getLong("durationMs"),
                     if (j.has("goblin") && !j.isNull("goblin")) j.optBoolean("goblin") else null,
                     j.optLong("dataId", -1), j.optString("iconKey", "unknown"),
-                    j.takeIf { it.has("totalDurationMs") && !it.isNull("totalDurationMs") }?.optLong("totalDurationMs"))
+                    j.takeIf { it.has("totalDurationMs") && !it.isNull("totalDurationMs") }?.optLong("totalDurationMs"),
+                    j.optInt("cnt", 1),
+                    j.takeIf { it.has("currentLevel") && !it.isNull("currentLevel") }?.optInt("currentLevel"))
             }.getOrNull() }
             return VillageSnapshot(tag, prefs.getString("name", "").orEmpty(), prefs.getInt("townHall", 0),
                 prefs.getInt("builders", 0), prefs.getLong("exportedAt", 0), jobs)
@@ -154,6 +159,7 @@ object VillageExportParser {
         val buildings = root.optJSONArray("buildings")
         require(buildings != null) { "This JSON has no buildings section and is not a village export." }
         val hall = findLevel(buildings, 1_000_001L)
+        require(hall > 0) { "Village export is missing its Town Hall level; existing village data was kept." }
         val builders = findCount(buildings, 1_000_015L).coerceIn(0, 6)
         val jobs = mutableListOf<VillageJob>()
         for (key in upgradeSectionKeys(root)) {
@@ -162,7 +168,9 @@ object VillageExportParser {
             val knownSection = knownLabels.containsKey(key)
             for (i in 0 until array.length()) {
                 val item = array.optJSONObject(i) ?: continue
-                val secondsRemaining = item.optLong("timer", 0L)
+                val secondsRemaining = if (!item.has("timer")) 0L else (item.opt("timer") as? Number)?.toLong()
+                    ?: throw IllegalArgumentException("An upgrade timer is malformed.")
+                require(secondsRemaining >= 0L) { "Upgrade timer is invalid." }
                 if (secondsRemaining <= 0) continue
                 require(secondsRemaining <= 366L * 86_400L) { "Upgrade timer is outside the supported range." }
                 val dataId = item.optLong("data", -1L)
@@ -173,13 +181,20 @@ object VillageExportParser {
                     if (!item.has("lvl")) continue
                     throw IllegalArgumentException("An upgrade entry is missing its stable game data ID.")
                 }
+                require(item.has("lvl")) { "An active upgrade is missing its level." }
+                val level = (item.opt("lvl") as? Number)?.toInt() ?: -1
+                require(level >= 0) { "An active upgrade has an invalid level." }
+                val count = if (item.has("cnt")) (item.opt("cnt") as? Number)?.toInt() ?: -1 else 1
+                require(count in 1..1_000) { "An active upgrade has an invalid copy count." }
                 val entity = GameCatalogue.resolve(dataId)
-                val actualSection = if (entity.category == GameCategory.UNKNOWN) "Unknown item" else section
                 val goblin = if (key.endsWith("2") || key in goblinExemptSections) null else parseGoblinFlag(item.opt("extra"))
                 // The ID is authoritative. Export-provided display text may be absent or stale.
-                // Valid upgrades are kept even when their section or entity is unknown.
-                jobs += VillageJob("$key:$i", entity.name, actualSection, item.optInt("lvl") + 1,
-                    stamp, secondsRemaining * 1000L, goblin, dataId, entity.iconKey)
+                // Valid upgrades are kept even when their section or entity is unknown, and the
+                // source section label is preserved so category routing (laboratory, equipment)
+                // and the widget can still tell where the row came from.
+                jobs += VillageJob("$key:$i", entity.name, section, level + 1,
+                    stamp, secondsRemaining * 1000L, goblin, dataId, entity.iconKey,
+                    count = count, currentLevel = level)
             }
         }
         require(jobs.size <= 300) { "Export contains too many active upgrades." }

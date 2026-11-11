@@ -10,7 +10,7 @@ import org.junit.Test
 import dev.stokonn.cocwidgt.widget.WidgetContentPlanner
 
 class VillageExportParserTest {
-    private fun export(buildings: String = "[]", upgrades: String = "[]", timestamp: Long = System.currentTimeMillis() / 1000L) =
+    private fun export(buildings: String = "[{\"data\":1000001,\"lvl\":16}]", upgrades: String = "[]", timestamp: Long = System.currentTimeMillis() / 1000L) =
         """{"tag":"#Y2099VGPJ","name":"Test Village","timestamp":$timestamp,"buildings":$buildings,"heroes":$upgrades}"""
 
     @Test fun mapsKnownIdsToRealNamesAndStableIds() {
@@ -48,7 +48,9 @@ class VillageExportParserTest {
         val raw = export(upgrades = """[{"data":987654321,"lvl":1,"timer":60}]""").replace("\"name\":\"Test Village\",", "")
         val village = VillageExportParser.parse(raw)
         assertEquals("Unknown game item (ID 987654321)", village.jobs.single().name)
-        assertEquals("Unknown item", village.jobs.single().section)
+        // The source section is preserved even for unknown IDs, so routing and diagnostics
+        // still know where the row came from.
+        assertEquals("Builders", village.jobs.single().section)
         assertEquals("unknown", village.jobs.single().iconKey)
         assertEquals("", village.name)
     }
@@ -95,7 +97,7 @@ class VillageExportParserTest {
     @Test fun mapsMultipleConcurrentUpgradesAcrossVillageSections() {
         val timestamp = System.currentTimeMillis() / 1000L
         val raw = """{"tag":" y2099vgpj ","name":"  Export Name  ","timestamp":$timestamp,
-            "buildings":[{"data":1000008,"lvl":1,"timer":600},{"data":1000009,"lvl":1,"timer":900}],
+            "buildings":[{"data":1000001,"lvl":16},{"data":1000008,"lvl":1,"timer":600},{"data":1000009,"lvl":1,"timer":900}],
             "units":[{"data":4000000,"lvl":10,"timer":1200},{"data":4000001,"lvl":10,"timer":1800}],
             "spells":[{"data":26000000,"lvl":5,"timer":2400}],
             "equipment":[{"data":99900001,"lvl":1,"timer":2700}],
@@ -108,28 +110,61 @@ class VillageExportParserTest {
         assertEquals(10, village.jobs.size)
         assertEquals(2, village.jobs.count { it.section == "Builders" })
         assertEquals(3, village.jobs.count { it.section == "Laboratory" })
-        assertEquals(1, village.jobs.count { it.section == "Unknown item" })
+        assertEquals(1, village.jobs.count { it.section == "Equipment" })
         assertEquals(2, village.jobs.count { it.section == "Builder Base" })
         assertEquals(1, village.jobs.count { it.section == "Star Laboratory" })
         assertEquals(1, village.jobs.count { it.section == "Pets" })
+        // Category routing: home laboratory research is its own Laboratory group, Builder Base
+        // Star Laboratory research stays in Troops, equipment rows in Heroes, and unknown-but-
+        // valid rows are kept instead of dropped.
+        fun job(dataId: Long) = village.jobs.single { it.dataId == dataId }
+        assertEquals(UpgradeCategory.LABORATORY, job(4000000L).category)
+        assertEquals(UpgradeCategory.LABORATORY, job(4000001L).category)
+        assertEquals(UpgradeCategory.LABORATORY, job(26000000L).category)
+        assertEquals(UpgradeCategory.TROOPS, job(4000031L).category)
+        assertEquals(UpgradeCategory.HEROES, job(99900001L).category)
+        assertEquals(UpgradeCategory.PETS, job(73000000L).category)
+        assertEquals(UpgradeCategory.BUILDINGS, job(1000008L).category)
+        assertEquals(UpgradeCategory.BUILDINGS, job(1000044L).category)
     }
 
-    @Test fun emptyUpgradeSectionsProduceNoSyntheticJobs() {
-        val village = VillageExportParser.parse(export(buildings = "[]", upgrades = "[]"))
+    @Test fun emptyUpgradeSectionsProduceNoSyntheticJobsForAValidVillage() {
+        val village = VillageExportParser.parse(export(upgrades = "[]"))
         assertTrue(village.jobs.isEmpty())
         assertTrue(WidgetContentPlanner.select(village.jobs, 480, 600, System.currentTimeMillis()).items.isEmpty())
+    }
+
+    @Test fun incompleteImportWithoutTownHallIsRejectedBeforePersistence() {
+        assertThrows(IllegalArgumentException::class.java) {
+            VillageExportParser.parse(export(buildings = "[]", upgrades = "[]"))
+        }
     }
 
     @Test fun repeatedNamesAndIdsKeepDistinctExportInstances() {
         val village = VillageExportParser.parse(export(upgrades = """[
             {"data":1000010,"lvl":1,"timer":60},
             {"data":1000033,"lvl":1,"timer":120},
-            {"data":1000008,"lvl":2,"timer":90},
-            {"data":1000008,"lvl":2,"timer":180}]"""))
+            {"data":1000008,"lvl":2,"timer":90,"cnt":4},
+            {"data":1000008,"lvl":3,"timer":180}]"""))
         assertEquals(4, village.jobs.size)
         assertEquals(2, village.jobs.count { it.name == "Wall" })
         assertEquals(2, village.jobs.count { it.dataId == 1000008L })
+        assertEquals(listOf(3, 4), village.jobs.filter { it.dataId == 1000008L }.map { it.level })
+        assertEquals(listOf(2, 3), village.jobs.filter { it.dataId == 1000008L }.map { it.currentLevel })
+        assertEquals(listOf(4, 1), village.jobs.filter { it.dataId == 1000008L }.map { it.count })
         assertEquals(4, village.jobs.map { it.id }.distinct().size)
+    }
+
+    @Test fun malformedActiveUpgradeFieldsAreRejected() {
+        assertThrows(IllegalArgumentException::class.java) {
+            VillageExportParser.parse(export(upgrades = """[{"data":1000008,"timer":60}]"""))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            VillageExportParser.parse(export(upgrades = """[{"data":1000008,"lvl":1,"timer":60,"cnt":0}]"""))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            VillageExportParser.parse(export(upgrades = """[{"data":1000008,"lvl":1,"timer":-60}]"""))
+        }
     }
 
     @Test fun oldExportTimersAreElapsedAgainstTheirTimestamp() {
@@ -142,7 +177,7 @@ class VillageExportParserTest {
     @Test fun goblinWorkerUpgradesAreParsedStoredCategorizedAndKept() {
         val timestamp = System.currentTimeMillis() / 1000L
         val raw = """{"tag":"#Y2099VGPJ","timestamp":$timestamp,
-            "buildings":[{"data":1000008,"lvl":5,"timer":600,"extra":true},{"data":1000009,"lvl":5,"timer":900,"extra":1}],
+            "buildings":[{"data":1000001,"lvl":16},{"data":1000008,"lvl":5,"timer":600,"extra":true},{"data":1000009,"lvl":5,"timer":900,"extra":1}],
             "traps":[{"data":12000000,"lvl":3,"timer":300,"extra":false}],
             "units":[{"data":4000000,"lvl":9,"timer":1200,"extra":"true"}],
             "heroes":[{"data":28000000,"lvl":95,"timer":2400}],
@@ -169,20 +204,43 @@ class VillageExportParserTest {
         assertEquals(UpgradeCategory.BUILDINGS, job(1000044L).category)
     }
 
+    @Test fun laboratoryResearchGoblinLabAndHelpersRouteToTheirOwnGroups() {
+        val timestamp = System.currentTimeMillis() / 1000L
+        val raw = """{"tag":"#Y2099VGPJ","timestamp":$timestamp,"buildings":[{"data":1000001,"lvl":16}],
+            "units":[{"data":4000000,"lvl":10,"timer":600}],
+            "spells":[{"data":26000002,"lvl":6,"timer":900}],
+            "siege_machines":[{"data":4000051,"lvl":3,"timer":1200}],
+            "goblin_lab":[{"data":4000008,"lvl":7,"timer":300,"extra":true}],
+            "goblin_research":[{"data":93000001,"lvl":2,"timer":300}]}"""
+        val village = VillageExportParser.parse(raw)
+        assertEquals(5, village.jobs.size)
+        fun job(dataId: Long) = village.jobs.single { it.dataId == dataId }
+        // Home laboratory research (troops, spells, siege machines) is its own Laboratory group.
+        assertEquals(UpgradeCategory.LABORATORY, job(4000000L).category)
+        assertEquals(UpgradeCategory.LABORATORY, job(26000002L).category)
+        assertEquals(UpgradeCategory.LABORATORY, job(4000051L).category)
+        // A goblin-flagged lab row goes to Goblin Workers even inside a laboratory section…
+        assertEquals(true, job(4000008L).goblin)
+        assertEquals(UpgradeCategory.GOBLIN, job(4000008L).category)
+        // …and helper entities are Goblin Workers wherever they appear.
+        assertEquals(UpgradeCategory.GOBLIN, job(93000001L).category)
+    }
+
     @Test fun unknownSectionsAreKeptInsteadOfDiscarded() {
         val timestamp = System.currentTimeMillis() / 1000L
         val raw = """{"tag":"#Y2099VGPJ","timestamp":$timestamp,
-            "buildings":[],"guardians":[{"data":987654999,"lvl":2,"timer":600}]}"""
+            "buildings":[{"data":1000001,"lvl":16}],"guardians":[{"data":987654999,"lvl":2,"timer":600}]}"""
         val village = VillageExportParser.parse(raw)
         val guardian = village.jobs.single()
         assertEquals(987654999L, guardian.dataId)
         assertEquals("Unknown game item (ID 987654999)", guardian.name)
+        assertEquals("Guardians", guardian.section)
         assertEquals(UpgradeCategory.OTHER, guardian.category)
     }
 
     @Test fun everyTopLevelUpgradeArrayIsParsedNotOnlyAWhitelist() {
         val timestamp = System.currentTimeMillis() / 1000L
-        val raw = """{"tag":"#Y2099VGPJ","timestamp":$timestamp,"buildings":[],
+        val raw = """{"tag":"#Y2099VGPJ","timestamp":$timestamp,"buildings":[{"data":1000001,"lvl":16}],
             "house_parts":[{"data":73000001,"lvl":3,"timer":600}],
             "goblin_research":[{"data":93000001,"lvl":2,"timer":300}],
             "skins":[{"data":1000008,"lvl":1,"timer":0}]}"""
@@ -204,7 +262,7 @@ class VillageExportParserTest {
 
     @Test fun rowsWithoutAnUpgradeShapeAreSkippedInsteadOfFailingTheImport() {
         val timestamp = System.currentTimeMillis() / 1000L
-        val raw = """{"tag":"#Y2099VGPJ","timestamp":$timestamp,"buildings":[],
+        val raw = """{"tag":"#Y2099VGPJ","timestamp":$timestamp,"buildings":[{"data":1000001,"lvl":16}],
             "boosts":[{"timer":600}],"obstacles":[{"data":1000005,"lvl":1}]}"""
         val village = VillageExportParser.parse(raw)
         assertTrue(village.jobs.isEmpty())
@@ -213,7 +271,7 @@ class VillageExportParserTest {
     @Test fun petHouseAndHelperUpgradesLandInTheGoblinAndPetColumns() {
         val timestamp = System.currentTimeMillis() / 1000L
         val raw = """{"tag":"#Y2099VGPJ","timestamp":$timestamp,
-            "buildings":[{"data":1000068,"lvl":6,"timer":900}],
+            "buildings":[{"data":1000001,"lvl":16},{"data":1000068,"lvl":6,"timer":900}],
             "helpers":[{"data":93000000,"lvl":3,"timer":600}]}"""
         val village = VillageExportParser.parse(raw)
         val petHouse = village.jobs.single { it.dataId == 1000068L }
