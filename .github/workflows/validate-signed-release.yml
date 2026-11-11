@@ -1,0 +1,149 @@
+name: Validate signed Android release
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: Full commit SHA on codex/v0.5.0-debloat-redesign to validate
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  preflight:
+    name: Review target commit
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      target_sha: ${{ steps.target.outputs.sha }}
+    steps:
+      - name: Validate target SHA format
+        shell: bash
+        env:
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "target_sha must be a full, lowercase 40-character commit SHA." >&2
+            exit 1
+          fi
+
+      - name: Check out requested commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.target_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate target and record review details
+        id: target
+        shell: bash
+        env:
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin \
+            refs/heads/codex/v0.5.0-debloat-redesign:refs/remotes/origin/codex/v0.5.0-debloat-redesign
+          git cat-file -e "$TARGET_SHA^{commit}"
+          git merge-base --is-ancestor "$TARGET_SHA" \
+            refs/remotes/origin/codex/v0.5.0-debloat-redesign
+          printf 'sha=%s\n' "$TARGET_SHA" >> "$GITHUB_OUTPUT"
+          {
+            printf 'Validation target: `%s`\n\n' "$TARGET_SHA"
+            printf 'Commit: '
+            git show -s --format='%s' "$TARGET_SHA"
+            printf '\nChanges in commit:\n'
+            git show --stat --oneline --format= "$TARGET_SHA"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  signed-build:
+    name: Build and verify signed APK
+    needs: preflight
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: release-signing-validation
+    steps:
+      - name: Fail closed unless validation environment is protected
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          environment_url="repos/$GITHUB_REPOSITORY/environments/release-signing-validation"
+          gh api "$environment_url" --jq '
+            any(.protection_rules[]?;
+              .type == "required_reviewers" and
+              .prevent_self_review == true and
+              ((.reviewers // []) | length > 0))
+          ' | grep -qx true
+          gh api "$environment_url/deployment-branch-policies" --jq '
+            [.branch_policies[]?.name] == ["main"]
+          ' | grep -qx true
+
+      - name: Check out reviewed commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.preflight.outputs.target_sha }}
+          persist-credentials: false
+
+      - name: Set up Java 17
+        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+        with:
+          packages: platform-tools
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@06832c7b30a0129d7fb559bcc6e43d26f6374244 # v4.3.1
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Build, verify signature, and inspect APK metadata
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          RELEASE_STORE_FILE: ${{ runner.temp }}/cocwidgt-release.jks
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          TARGET_SHA: ${{ needs.preflight.outputs.target_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$RELEASE_KEYSTORE_BASE64" || -z "$RELEASE_STORE_PASSWORD" || \
+                -z "$RELEASE_KEY_ALIAS" || -z "$RELEASE_KEY_PASSWORD" ]]; then
+            echo "One or more required release signing secrets are unavailable." >&2
+            exit 1
+          fi
+          umask 077
+          printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RELEASE_STORE_FILE"
+          test -s "$RELEASE_STORE_FILE"
+
+          ./gradlew testDebugUnitTest lintDebug assembleDebug assembleRelease
+
+          apk="app/build/outputs/apk/release/app-release.apk"
+          test -s "$apk"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk"
+
+          badging="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk")"
+          package_line="$(printf '%s\n' "$badging" | sed -n '/^package:/p')"
+          printf '%s\n' "$package_line"
+          grep -Fq "package: name='dev.stokonn.cocwidgt' versionCode='5' versionName='0.5.0'" <<< "$package_line"
+
+          apk_sha256="$(sha256sum "$apk" | cut -d' ' -f1)"
+          {
+            printf 'Validation target: `%s`\n\n' "$TARGET_SHA"
+            printf 'APK: `app-release.apk`\n\n'
+            printf 'Package: `dev.stokonn.cocwidgt`\n\n'
+            printf 'Version: `0.5.0` (code `5`)\n\n'
+            printf 'Signature verification: passed with Build Tools 35.0.0 `apksigner`.\n\n'
+            printf 'SHA-256: `%s`\n' "$apk_sha256"
+          } >> "$GITHUB_STEP_SUMMARY"
