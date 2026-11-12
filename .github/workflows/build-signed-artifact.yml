@@ -1,0 +1,168 @@
+name: Build signed v0.5.1 artifact (manual)
+
+# Manually dispatched build of the signed v0.5.1 release APK from any branch
+# (for example codex/v0.5.1-build-toolchain-modernization). The APK is uploaded
+# as a workflow artifact only: this workflow has NO tag, draft, release, or
+# publish steps and runs with read-only repository permissions, so it cannot
+# create or modify tags or releases. Signing configuration and the existing
+# release workflows are unchanged; the existing RELEASE_* repository secrets
+# are used exactly like the v0.5.0/v0.5.1 release workflows. Secrets are never
+# printed, and neither the keystore nor any secret is uploaded.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build, verify, and sign APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out selected commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Java 17
+        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+        with:
+          packages: platform-tools
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@06832c7b30a0129d7fb559bcc6e43d26f6374244 # v4.3.1
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Validate signing secrets (fail closed, never printed)
+        env:
+          STORE: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$STORE" && test -n "$STORE_PASSWORD" && test -n "$KEY_ALIAS" && test -n "$KEY_PASSWORD" || {
+            echo "Missing release signing secrets. Configure RELEASE_KEYSTORE_BASE64, RELEASE_STORE_PASSWORD, RELEASE_KEY_ALIAS and RELEASE_KEY_PASSWORD." >&2
+            exit 1
+          }
+          umask 077
+          printf '%s' "$STORE" | base64 --decode > "$RUNNER_TEMP/cocwidgt-release.jks"
+          test -s "$RUNNER_TEMP/cocwidgt-release.jks"
+
+      - name: Run verification and build signed APK
+        env:
+          RELEASE_STORE_FILE: ${{ runner.temp }}/cocwidgt-release.jks
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          ./gradlew testDebugUnitTest lintDebug assembleRelease
+          test -s app/build/outputs/apk/release/app-release.apk
+
+      - name: Verify package, signature, alignment, resources, and execution paths
+        env:
+          EXPECTED_CERT_SHA256: "5a3fda3ccc7b23a87b02dca1abc5c63aa226b75f7b26950799457ff53282dd94"
+          LOCAL_REFERENCE_WEBP: "921"
+          LOCAL_REFERENCE_RES_FILES: "1895"
+          LOCAL_REFERENCE_PROVIDE_GLANCE: "10"
+          LOCAL_REFERENCE_DOWORK: "18"
+          LOCAL_REFERENCE_STARTWORK: "9"
+          LOCAL_REFERENCE_VILLAGE_STRING: "1"
+          LOCAL_REFERENCE_DEX_SHA256: "4d4ccd629e1c7f56cfc65576ca322a5a519e9a292eac243ec155c6a80ca3a78c"
+        run: |
+          set -euo pipefail
+          apk="app/build/outputs/apk/release/app-release.apk"
+          bt="$ANDROID_HOME/build-tools/35.0.0"
+
+          # APK integrity and ZIP alignment.
+          unzip -t "$apk" > /dev/null
+          "$bt/zipalign" -c 4 "$apk"
+
+          # Signature: verify the APK and pin the expected release certificate.
+          certs="$("$bt/apksigner" verify --verbose --print-certs "$apk")"
+          printf '%s\n' "$certs"
+          cert_sha="$(printf '%s\n' "$certs" | sed -n -E 's/^Signer #1 certificate SHA-256( digest)?: //p' | tr 'A-F' 'a-f')"
+          if [ "$cert_sha" != "$EXPECTED_CERT_SHA256" ]; then
+            echo "Signing certificate fingerprint mismatch: got '${cert_sha:-<none>}', expected '$EXPECTED_CERT_SHA256'." >&2
+            exit 1
+          fi
+
+          # Package name, version name, and version code.
+          badging="$("$bt/aapt" dump badging "$apk")"
+          package_line="$(printf '%s\n' "$badging" | sed -n '/^package:/p')"
+          printf '%s\n' "$package_line"
+          grep -Fq "package: name='dev.stokonn.cocwidgt' versionCode='6' versionName='0.5.1'" <<< "$package_line"
+
+          # Artwork and resource counts, compared with the locally verified fixed build.
+          webp_count="$(unzip -l "$apk" | grep -c '\.webp' || true)"
+          res_count="$(unzip -l "$apk" | grep -c ' res/' || true)"
+          if [ "$webp_count" -ne "$LOCAL_REFERENCE_WEBP" ]; then
+            echo "Artwork mismatch: APK has $webp_count WebP files, expected $LOCAL_REFERENCE_WEBP (locally verified fixed build)." >&2
+            exit 1
+          fi
+          if [ "$res_count" -lt 1800 ]; then
+            echo "Resource shrink regression: APK has $res_count res/ files, expected >= 1800 (locally verified fixed build: $LOCAL_REFERENCE_RES_FILES; broken build had 11)." >&2
+            exit 1
+          fi
+
+          # Glance composition path and WorkManager execution path in the dex.
+          unzip -p "$apk" classes.dex > classes.dex
+          provide_glance="$(grep -ao 'provideGlance' classes.dex | wc -l || true)"
+          do_work="$(grep -ao 'doWork' classes.dex | wc -l || true)"
+          start_work="$(grep -ao 'startWork' classes.dex | wc -l || true)"
+          village_string="$(grep -ao 'IMPORT VILLAGE DATA' "$apk" | wc -l || true)"
+          if [ "$provide_glance" -lt 1 ] || [ "$do_work" -lt 1 ] || [ "$start_work" -lt 1 ] || [ "$village_string" -lt 1 ]; then
+            echo "Execution-path stripping detected: provideGlance=$provide_glance doWork=$do_work startWork=$start_work villageString=$village_string (all must be >= 1)." >&2
+            exit 1
+          fi
+
+          # Informational comparison against the locally verified fixed build.
+          dex_sha="$(sha256sum classes.dex | cut -d' ' -f1)"
+          if [ "$dex_sha" = "$LOCAL_REFERENCE_DEX_SHA256" ]; then
+            dex_match="identical"
+          else
+            dex_match="differs (informational only; CI uses Temurin 17, local build used a different JDK)"
+          fi
+          {
+            printf '### Signed v0.5.1 artifact verification\n\n'
+            printf '| Check | CI APK | Local verified fixed build |\n'
+            printf '| --- | --- | --- |\n'
+            printf '| WebP artwork files | %s | %s |\n' "$webp_count" "$LOCAL_REFERENCE_WEBP"
+            printf '| res/ files | %s | %s |\n' "$res_count" "$LOCAL_REFERENCE_RES_FILES"
+            printf '| provideGlance (dex) | %s | %s |\n' "$provide_glance" "$LOCAL_REFERENCE_PROVIDE_GLANCE"
+            printf '| doWork (dex) | %s | %s |\n' "$do_work" "$LOCAL_REFERENCE_DOWORK"
+            printf '| startWork (dex) | %s | %s |\n' "$start_work" "$LOCAL_REFERENCE_STARTWORK"
+            printf '| IMPORT VILLAGE DATA | %s | %s |\n' "$village_string" "$LOCAL_REFERENCE_VILLAGE_STRING"
+            printf '| classes.dex SHA-256 | `%s` | `%s` (%s) |\n\n' "$dex_sha" "$LOCAL_REFERENCE_DEX_SHA256" "$dex_match"
+            printf -- '- Package/version: `dev.stokonn.cocwidgt` 0.5.1 (code 6) verified via aapt badging.\n'
+            printf -- '- ZIP integrity (`unzip -t`) and alignment (`zipalign -c 4`) verified.\n'
+            printf -- '- apksigner verified; certificate SHA-256: `%s` (expected release certificate).\n' "$cert_sha"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Stage APK and SHA-256 checksum
+        run: |
+          set -euo pipefail
+          cp app/build/outputs/apk/release/app-release.apk cocw0.5.1-signed.apk
+          sha256sum cocw0.5.1-signed.apk > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Upload signed cocw0.5.1-signed.apk artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cocw0.5.1-signed-apk
+          path: |
+            cocw0.5.1-signed.apk
+            SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
