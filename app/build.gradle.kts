@@ -9,8 +9,8 @@ android {
         applicationId = "dev.stokonn.cocwidgt"
         minSdk = 29
         targetSdk = 35
-        versionCode = 6
-        versionName = "0.5.1"
+        versionCode = 7
+        versionName = "0.6.0"
     }
     val releaseStoreFile = providers.environmentVariable("RELEASE_STORE_FILE").orNull
     val releaseStorePassword = providers.environmentVariable("RELEASE_STORE_PASSWORD").orNull

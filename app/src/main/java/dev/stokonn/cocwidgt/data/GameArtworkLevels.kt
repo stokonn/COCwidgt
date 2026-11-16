@@ -51,6 +51,7 @@ internal object GameArtworkLevels {
             16 to R.drawable.coc_buildings_home_village_town_hall_level_16,
             17 to R.drawable.coc_buildings_home_village_town_hall_level_17,
             18 to R.drawable.coc_buildings_home_village_town_hall_level_18,
+            19 to R.drawable.coc_buildings_home_village_town_hall_level_19,
         ),
         1000002L to mapOf(
             1 to R.drawable.coc_buildings_home_village_elixir_collector_level_1,
@@ -70,6 +71,7 @@ internal object GameArtworkLevels {
             15 to R.drawable.coc_buildings_home_village_elixir_collector_level_15,
             16 to R.drawable.coc_buildings_home_village_elixir_collector_level_16,
             17 to R.drawable.coc_buildings_home_village_elixir_collector_level_17,
+            18 to R.drawable.coc_buildings_home_village_elixir_collector_level_18,
         ),
         1000003L to mapOf(
             1 to R.drawable.coc_buildings_home_village_elixir_storage_level_1,
@@ -91,6 +93,7 @@ internal object GameArtworkLevels {
             17 to R.drawable.coc_buildings_home_village_elixir_storage_level_17,
             18 to R.drawable.coc_buildings_home_village_elixir_storage_level_18,
             19 to R.drawable.coc_buildings_home_village_elixir_storage_level_19,
+            20 to R.drawable.coc_buildings_home_village_elixir_storage_level_20,
         ),
         1000004L to mapOf(
             1 to R.drawable.coc_buildings_home_village_gold_mine_level_1,
@@ -110,6 +113,7 @@ internal object GameArtworkLevels {
             15 to R.drawable.coc_buildings_home_village_gold_mine_level_15,
             16 to R.drawable.coc_buildings_home_village_gold_mine_level_16,
             17 to R.drawable.coc_buildings_home_village_gold_mine_level_17,
+            18 to R.drawable.coc_buildings_home_village_gold_mine_level_18,
         ),
         1000005L to mapOf(
             1 to R.drawable.coc_buildings_home_village_gold_storage_level_1,
@@ -131,6 +135,7 @@ internal object GameArtworkLevels {
             17 to R.drawable.coc_buildings_home_village_gold_storage_level_17,
             18 to R.drawable.coc_buildings_home_village_gold_storage_level_18,
             19 to R.drawable.coc_buildings_home_village_gold_storage_level_19,
+            20 to R.drawable.coc_buildings_home_village_gold_storage_level_20,
         ),
         1000006L to mapOf(
             1 to R.drawable.coc_buildings_home_village_barracks_level_1,
@@ -170,6 +175,7 @@ internal object GameArtworkLevels {
             14 to R.drawable.coc_buildings_home_village_laboratory_level_14,
             15 to R.drawable.coc_buildings_home_village_laboratory_level_15,
             16 to R.drawable.coc_buildings_home_village_laboratory_level_16,
+            17 to R.drawable.coc_buildings_home_village_laboratory_level_17,
         ),
         1000008L to mapOf(
             1 to R.drawable.coc_buildings_home_village_cannon_level_1,
@@ -237,6 +243,7 @@ internal object GameArtworkLevels {
             17 to R.drawable.coc_buildings_home_village_wall_level_17,
             18 to R.drawable.coc_buildings_home_village_wall_level_18,
             19 to R.drawable.coc_buildings_home_village_wall_level_19,
+            20 to R.drawable.coc_buildings_home_village_wall_level_20,
         ),
         1000011L to mapOf(
             1 to R.drawable.coc_buildings_home_village_wizard_tower_level_1,
@@ -274,6 +281,7 @@ internal object GameArtworkLevels {
             14 to R.drawable.coc_buildings_home_village_air_defense_level_14,
             15 to R.drawable.coc_buildings_home_village_air_defense_level_15,
             16 to R.drawable.coc_buildings_home_village_air_defense_level_16,
+            17 to R.drawable.coc_buildings_home_village_air_defense_level_17,
         ),
         1000013L to mapOf(
             1 to R.drawable.coc_buildings_home_village_mortar_level_1,
@@ -310,6 +318,7 @@ internal object GameArtworkLevels {
             12 to R.drawable.coc_buildings_home_village_clan_castle_level_12,
             13 to R.drawable.coc_buildings_home_village_clan_castle_level_13,
             14 to R.drawable.coc_buildings_home_village_clan_castle_level_14,
+            15 to R.drawable.coc_buildings_home_village_clan_castle_level_15,
         ),
         1000015L to mapOf(
             1 to R.drawable.coc_buildings_home_village_builder_s_hut_level_1,
@@ -320,6 +329,7 @@ internal object GameArtworkLevels {
             6 to R.drawable.coc_buildings_home_village_builder_s_hut_level_6,
             7 to R.drawable.coc_buildings_home_village_builder_s_hut_level_7,
             8 to R.drawable.coc_buildings_home_village_builder_s_hut_level_8,
+            9 to R.drawable.coc_buildings_home_village_builder_s_hut_level_9,
         ),
         1000019L to mapOf(
             1 to R.drawable.coc_buildings_home_village_hidden_tesla_level_1,
@@ -339,6 +349,7 @@ internal object GameArtworkLevels {
             15 to R.drawable.coc_buildings_home_village_hidden_tesla_level_15,
             16 to R.drawable.coc_buildings_home_village_hidden_tesla_level_16,
             17 to R.drawable.coc_buildings_home_village_hidden_tesla_level_17,
+            18 to R.drawable.coc_buildings_home_village_hidden_tesla_level_18,
         ),
         1000020L to mapOf(
             1 to R.drawable.coc_buildings_home_village_spell_factory_level_1,
@@ -350,6 +361,7 @@ internal object GameArtworkLevels {
             7 to R.drawable.coc_buildings_home_village_spell_factory_level_7,
             8 to R.drawable.coc_buildings_home_village_spell_factory_level_8,
             9 to R.drawable.coc_buildings_home_village_spell_factory_level_9,
+            10 to R.drawable.coc_buildings_home_village_spell_factory_level_10,
         ),
         1000021L to mapOf(
             1 to R.drawable.coc_buildings_home_village_x_bow_level_1,
@@ -365,6 +377,7 @@ internal object GameArtworkLevels {
             11 to R.drawable.coc_buildings_home_village_x_bow_level_11,
             12 to R.drawable.coc_buildings_home_village_x_bow_level_12,
             13 to R.drawable.coc_buildings_home_village_x_bow_level_13,
+            14 to R.drawable.coc_buildings_home_village_x_bow_level_14,
         ),
         1000023L to mapOf(
             1 to R.drawable.coc_buildings_home_village_dark_elixir_drill_level_1,
@@ -378,6 +391,7 @@ internal object GameArtworkLevels {
             9 to R.drawable.coc_buildings_home_village_dark_elixir_drill_level_9,
             10 to R.drawable.coc_buildings_home_village_dark_elixir_drill_level_10,
             11 to R.drawable.coc_buildings_home_village_dark_elixir_drill_level_11,
+            12 to R.drawable.coc_buildings_home_village_dark_elixir_drill_level_12,
         ),
         1000024L to mapOf(
             1 to R.drawable.coc_buildings_home_village_dark_elixir_storage_level_1,
@@ -393,6 +407,7 @@ internal object GameArtworkLevels {
             11 to R.drawable.coc_buildings_home_village_dark_elixir_storage_level_11,
             12 to R.drawable.coc_buildings_home_village_dark_elixir_storage_level_12,
             13 to R.drawable.coc_buildings_home_village_dark_elixir_storage_level_13,
+            14 to R.drawable.coc_buildings_home_village_dark_elixir_storage_level_14,
         ),
         1000026L to mapOf(
             1 to R.drawable.coc_buildings_home_village_dark_barracks_level_1,
@@ -510,6 +525,7 @@ internal object GameArtworkLevels {
             7 to R.drawable.coc_buildings_home_village_blacksmith_level_7,
             8 to R.drawable.coc_buildings_home_village_blacksmith_level_8,
             9 to R.drawable.coc_buildings_home_village_blacksmith_level_9,
+            10 to R.drawable.coc_buildings_home_village_blacksmith_level_10,
         ),
         1000071L to mapOf(
             1 to R.drawable.coc_buildings_home_village_hero_hall_level_1,
@@ -524,6 +540,7 @@ internal object GameArtworkLevels {
             10 to R.drawable.coc_buildings_home_village_hero_hall_level_10,
             11 to R.drawable.coc_buildings_home_village_hero_hall_level_11,
             12 to R.drawable.coc_buildings_home_village_hero_hall_level_12,
+            13 to R.drawable.coc_buildings_home_village_hero_hall_level_13,
         ),
         1000072L to mapOf(
             1 to R.drawable.coc_buildings_home_village_spell_tower_level_1,
@@ -542,18 +559,21 @@ internal object GameArtworkLevels {
             1 to R.drawable.coc_buildings_home_village_multi_gear_tower_level_1,
             2 to R.drawable.coc_buildings_home_village_multi_gear_tower_level_2,
             3 to R.drawable.coc_buildings_home_village_multi_gear_tower_level_3,
+            4 to R.drawable.coc_buildings_home_village_multi_gear_tower_level_4,
         ),
         1000084L to mapOf(
             1 to R.drawable.coc_buildings_home_village_multi_archer_tower_level_1,
             2 to R.drawable.coc_buildings_home_village_multi_archer_tower_level_2,
             3 to R.drawable.coc_buildings_home_village_multi_archer_tower_level_3,
             4 to R.drawable.coc_buildings_home_village_multi_archer_tower_level_4,
+            5 to R.drawable.coc_buildings_home_village_multi_archer_tower_level_5,
         ),
         1000085L to mapOf(
             1 to R.drawable.coc_buildings_home_village_ricochet_cannon_level_1,
             2 to R.drawable.coc_buildings_home_village_ricochet_cannon_level_2,
             3 to R.drawable.coc_buildings_home_village_ricochet_cannon_level_3,
             4 to R.drawable.coc_buildings_home_village_ricochet_cannon_level_4,
+            5 to R.drawable.coc_buildings_home_village_ricochet_cannon_level_5,
         ),
         1000086L to mapOf(
             1 to R.drawable.coc_buildings_home_village_revenge_tower_level_1,
@@ -933,6 +953,7 @@ internal object GameArtworkLevels {
             11 to R.drawable.coc_traps_home_village_spring_trap_level_11,
             12 to R.drawable.coc_traps_home_village_spring_trap_level_12,
             13 to R.drawable.coc_traps_home_village_spring_trap_level_13,
+            14 to R.drawable.coc_traps_home_village_spring_trap_level_14,
         ),
         12000002L to mapOf(
             1 to R.drawable.coc_traps_home_village_giant_bomb_level_1,
@@ -962,6 +983,7 @@ internal object GameArtworkLevels {
             11 to R.drawable.coc_traps_home_village_air_bomb_level_11,
             12 to R.drawable.coc_traps_home_village_air_bomb_level_12,
             13 to R.drawable.coc_traps_home_village_air_bomb_level_13,
+            14 to R.drawable.coc_traps_home_village_air_bomb_level_14,
         ),
         12000006L to mapOf(
             1 to R.drawable.coc_traps_home_village_seeking_air_mine_level_1,
@@ -979,6 +1001,7 @@ internal object GameArtworkLevels {
             3 to R.drawable.coc_traps_home_village_skeleton_trap_level_3,
             4 to R.drawable.coc_traps_home_village_skeleton_trap_level_4,
             5 to R.drawable.coc_traps_home_village_skeleton_trap_level_5,
+            6 to R.drawable.coc_traps_home_village_skeleton_trap_level_6,
         ),
         12000010L to mapOf(
             1 to R.drawable.coc_traps_home_village_spring_trap_level_1,
@@ -1041,6 +1064,28 @@ internal object GameArtworkLevels {
             2 to R.drawable.coc_traps_home_village_giga_bomb_level_2,
             3 to R.drawable.coc_traps_home_village_giga_bomb_level_3,
             4 to R.drawable.coc_traps_home_village_giga_bomb_level_4,
+        ),
+        1000106L to mapOf(
+            1 to R.drawable.coc_buildings_home_village_squad_barracks_level_1,
+            2 to R.drawable.coc_buildings_home_village_squad_barracks_level_2,
+            3 to R.drawable.coc_buildings_home_village_squad_barracks_level_3,
+            4 to R.drawable.coc_buildings_home_village_squad_barracks_level_4,
+            5 to R.drawable.coc_buildings_home_village_squad_barracks_level_5,
+            6 to R.drawable.coc_buildings_home_village_squad_barracks_level_6,
+            7 to R.drawable.coc_buildings_home_village_squad_barracks_level_7,
+            8 to R.drawable.coc_buildings_home_village_squad_barracks_level_8,
+            9 to R.drawable.coc_buildings_home_village_squad_barracks_level_9,
+            10 to R.drawable.coc_buildings_home_village_squad_barracks_level_10,
+            11 to R.drawable.coc_buildings_home_village_squad_barracks_level_11,
+            12 to R.drawable.coc_buildings_home_village_squad_barracks_level_12,
+        ),
+        1000107L to mapOf(
+            1 to R.drawable.coc_buildings_home_village_spiky_tower_level_1,
+            2 to R.drawable.coc_buildings_home_village_spiky_tower_level_2,
+        ),
+        1000108L to mapOf(
+            1 to R.drawable.coc_buildings_home_village_firecracker_tower_level_1,
+            2 to R.drawable.coc_buildings_home_village_firecracker_tower_level_2,
         ),
     )
 
@@ -1136,5 +1181,32 @@ internal object GameArtworkLevels {
         73000011L to R.drawable.coc_pets_angry_jelly_icon,
         73000016L to R.drawable.coc_pets_sneezy_icon,
         73000017L to R.drawable.coc_pets_greedy_raven_icon,
+        119000000L to R.drawable.coc_buildings_home_village_town_hall_level_19_wizard,
+        119000001L to R.drawable.coc_buildings_home_village_town_hall_level_19_archer,
+        119000002L to R.drawable.coc_buildings_home_village_town_hall_level_19_barbarian,
+        26000153L to R.drawable.coc_spells_heroic_spell,
+        28000007L to R.drawable.coc_heroes_dragon_duke_icon,
+        107000000L to R.drawable.coc_guardians_longshot_icon,
+        107000001L to R.drawable.coc_guardians_smasher_icon,
+        107000008L to R.drawable.coc_guardians_logger_icon,
+        4000056L to R.drawable.coc_troops_super_miner_icon,
+        4000063L to R.drawable.coc_troops_inferno_dragon_icon,
+        4000064L to R.drawable.coc_troops_super_valkyrie_icon,
+        4000066L to R.drawable.coc_troops_super_witch_icon,
+        4000076L to R.drawable.coc_troops_ice_hound_icon,
+        4000080L to R.drawable.coc_troops_super_bowler_icon,
+        4000147L to R.drawable.coc_troops_super_yeti_icon,
+        4000195L to R.drawable.coc_troops_barch_squad_icon,
+        4000196L to R.drawable.coc_troops_giant_wizard_squad_icon,
+        4000197L to R.drawable.coc_troops_wall_breaker_squad_icon,
+        4000198L to R.drawable.coc_troops_minion_squad_icon,
+        4000199L to R.drawable.coc_troops_balloon_squad_icon,
+        4000200L to R.drawable.coc_troops_golem_witch_squad_icon,
+        4000201L to R.drawable.coc_troops_hog_rider_squad_icon,
+        4000202L to R.drawable.coc_troops_miner_squad_icon,
+        4000203L to R.drawable.coc_troops_healer_squad_icon,
+        4000204L to R.drawable.coc_troops_pekka_titan_squad_icon,
+        4000205L to R.drawable.coc_troops_dragons_squad_icon,
+        4000206L to R.drawable.coc_troops_baby_dragon_squad_icon,
     )
 }

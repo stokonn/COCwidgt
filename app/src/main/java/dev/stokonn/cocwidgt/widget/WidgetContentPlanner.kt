@@ -9,6 +9,7 @@ import dev.stokonn.cocwidgt.data.VillageJob
 enum class WidgetSection(val label: String) {
     BUILDERS("Builders"),
     LAB_PETS("Lab & Pets"),
+    GUARDIANS("Guardians"),
 }
 
 /** One reference-design section inside the widget's single vertical list. */
@@ -40,6 +41,23 @@ object WidgetContentPlanner {
     private const val COMPACT_ROW_DP = 26
     private const val STANDARD_ROW_DP = 36
     private const val SECTION_HEADER_DP = 18
+    private const val COMPACT_HEADER_DP = 40
+    private const val COMPACT_GAP_DP = 4
+    private const val COMPACT_STATUS_DP = 14
+    private const val STANDARD_HEADER_DP = 50
+    private const val STANDARD_GAP_DP = 7
+    private const val STANDARD_STATUS_DP = 24
+
+    fun showCompactStatus(heightDp: Int): Boolean = heightDp >= 140
+
+    /** List viewport after the same fixed regions rendered by [CocWidget]. */
+    fun listHeight(heightDp: Int, compact: Boolean): Int {
+        val padding = if (compact) 8 else 13
+        val fixed = if (compact) COMPACT_HEADER_DP +
+            if (showCompactStatus(heightDp)) COMPACT_GAP_DP + COMPACT_STATUS_DP else 0
+        else STANDARD_HEADER_DP + STANDARD_GAP_DP + STANDARD_STATUS_DP
+        return (heightDp - 2 * padding - fixed).coerceAtLeast(0)
+    }
 
     fun select(jobs: List<VillageJob>, widthDp: Int, heightDp: Int, now: Long): WidgetSelection {
         val active = jobs.filter { it.remainingMs(now) > 0 }
@@ -47,9 +65,7 @@ object WidgetContentPlanner {
         val compact = widthDp < COMPACT_WIDTH_DP || heightDp < COMPACT_HEIGHT_DP
         // Match CocWidget's measured fixed regions: outer padding, player header, status line,
         // gaps and the two section headings. LocalSize comes from SizeMode.Exact.
-        val padding = if (compact) 8 else 13
-        val fixed = if (compact) 32 + 4 + 14 else 50 + 7 + 24
-        val listHeight = (heightDp - 2 * padding - fixed).coerceAtLeast(0)
+        val listHeight = listHeight(heightDp, compact)
         val rowHeight = if (compact) COMPACT_ROW_DP else STANDARD_ROW_DP
         var capacity = ordered.size
         while (capacity > 0) {
@@ -86,6 +102,7 @@ object WidgetContentPlanner {
 
     private fun sectionOf(job: VillageJob): WidgetSection = when (job.category) {
         UpgradeCategory.TROOPS, UpgradeCategory.PETS, UpgradeCategory.LABORATORY -> WidgetSection.LAB_PETS
+        UpgradeCategory.GUARDIANS -> WidgetSection.GUARDIANS
         UpgradeCategory.GOBLIN -> when (GameCatalogue.resolve(job.dataId).category) {
             GameCategory.TROOP, GameCategory.SPELL, GameCategory.PET, GameCategory.SIEGE -> WidgetSection.LAB_PETS
             GameCategory.HELPER -> if (job.dataId == LAB_ASSISTANT_ID) WidgetSection.LAB_PETS else WidgetSection.BUILDERS

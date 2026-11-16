@@ -7,6 +7,7 @@ import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import dev.stokonn.cocwidgt.R
 import dev.stokonn.cocwidgt.widget.WidgetContentPlanner
 
 class VillageExportParserTest {
@@ -53,12 +54,184 @@ class VillageExportParserTest {
         assertEquals("Builders", village.jobs.single().section)
         assertEquals("unknown", village.jobs.single().iconKey)
         assertEquals("", village.name)
+        assertEquals(listOf(987654321L), village.unsupportedDataIds)
     }
 
     @Test fun rejectsMalformedAndNonVillageJson() {
         assertThrows(IllegalArgumentException::class.java) { VillageExportParser.parse("{") }
         assertThrows(IllegalArgumentException::class.java) { VillageExportParser.parse("""{"tag":"#Y2099VGPJ","timestamp":1}""") }
         assertThrows(IllegalArgumentException::class.java) { VillageExportParser.parse(export(timestamp = 0)) }
+    }
+
+    @Test fun acceptsUtf8BomBeforeExportJson() {
+        val village = VillageExportParser.parse("\uFEFF  ${export()}")
+        assertEquals("#Y2099VGPJ", village.tag)
+        assertEquals(16, village.townHall)
+    }
+
+    @Test fun acceptsTownHallNineteenWithoutClampingTheExportedLevel() {
+        val village = VillageExportParser.parse(export(buildings = """[{"data":1000001,"lvl":19}]"""))
+        assertEquals(19, village.townHall)
+        assertEquals("Town Hall", GameCatalogue.resolve(1000001L).name)
+        assertTrue(GameArtwork.drawableResId(1000001L, 19) != null)
+    }
+
+    @Test fun verifiedTownHallNineteenCatalogueMatchesUpstreamAndResolvesArtwork() {
+        val expected = mapOf(
+            1000001L to Triple("Town Hall", GameCategory.BUILDING, 19),
+            1000014L to Triple("Clan Castle", GameCategory.BUILDING, 15),
+            1000007L to Triple("Laboratory", GameCategory.BUILDING, 17),
+            1000071L to Triple("Hero Hall", GameCategory.BUILDING, 13),
+            1000005L to Triple("Gold Storage", GameCategory.BUILDING, 20),
+            1000003L to Triple("Elixir Storage", GameCategory.BUILDING, 20),
+            1000024L to Triple("Dark Elixir Storage", GameCategory.BUILDING, 14),
+            1000010L to Triple("Wall", GameCategory.BUILDING, 20),
+            1000004L to Triple("Gold Mine", GameCategory.BUILDING, 18),
+            1000002L to Triple("Elixir Collector", GameCategory.BUILDING, 18),
+            1000023L to Triple("Dark Elixir Drill", GameCategory.BUILDING, 12),
+            1000012L to Triple("Air Defense", GameCategory.DEFENCE, 17),
+            1000019L to Triple("Hidden Tesla", GameCategory.DEFENCE, 18),
+            1000021L to Triple("X-Bow", GameCategory.DEFENCE, 14),
+            1000084L to Triple("Multi-Archer Tower", GameCategory.DEFENCE, 5),
+            1000079L to Triple("Multi-Gear Tower", GameCategory.DEFENCE, 4),
+            1000085L to Triple("Ricochet Cannon", GameCategory.DEFENCE, 5),
+            1000015L to Triple("Builder's Hut", GameCategory.DEFENCE, 9),
+            1000020L to Triple("Spell Factory", GameCategory.BUILDING, 10),
+            1000070L to Triple("Blacksmith", GameCategory.BUILDING, 10),
+            1000106L to Triple("Squad Barracks", GameCategory.BUILDING, 12),
+            1000107L to Triple("Spiky Tower", GameCategory.DEFENCE, 2),
+            1000108L to Triple("Firecracker Tower", GameCategory.DEFENCE, 2),
+            12000005L to Triple("Air Bomb", GameCategory.TRAP, 14),
+            12000008L to Triple("Skeleton Trap", GameCategory.TRAP, 6),
+            12000001L to Triple("Spring Trap", GameCategory.TRAP, 14),
+            26000000L to Triple("Lightning Spell", GameCategory.SPELL, 14),
+            26000001L to Triple("Healing Spell", GameCategory.SPELL, 13),
+            26000009L to Triple("Poison Spell", GameCategory.SPELL, 13),
+            26000011L to Triple("Haste Spell", GameCategory.SPELL, 8),
+            26000028L to Triple("Bat Spell", GameCategory.SPELL, 9),
+            26000120L to Triple("Totem Spell", GameCategory.SPELL, 5),
+            26000153L to Triple("Heroic Spell", GameCategory.SPELL, 4),
+            4000000L to Triple("Barbarian", GameCategory.TROOP, 14),
+            4000001L to Triple("Archer", GameCategory.TROOP, 15),
+            4000002L to Triple("Goblin", GameCategory.TROOP, 11),
+            4000003L to Triple("Giant", GameCategory.TROOP, 15),
+            4000004L to Triple("Wall Breaker", GameCategory.TROOP, 15),
+            4000005L to Triple("Balloon", GameCategory.TROOP, 14),
+            4000006L to Triple("Wizard", GameCategory.TROOP, 15),
+            4000007L to Triple("Healer", GameCategory.TROOP, 12),
+            4000008L to Triple("Dragon", GameCategory.TROOP, 14),
+            4000009L to Triple("P.E.K.K.A", GameCategory.TROOP, 14),
+            4000010L to Triple("Minion", GameCategory.TROOP, 15),
+            4000011L to Triple("Hog Rider", GameCategory.TROOP, 16),
+            4000012L to Triple("Valkyrie", GameCategory.TROOP, 13),
+            4000013L to Triple("Golem", GameCategory.TROOP, 16),
+            4000015L to Triple("Witch", GameCategory.TROOP, 9),
+            4000017L to Triple("Lava Hound", GameCategory.TROOP, 9),
+            4000022L to Triple("Bowler", GameCategory.TROOP, 11),
+            4000023L to Triple("Baby Dragon", GameCategory.TROOP, 13),
+            4000024L to Triple("Miner", GameCategory.TROOP, 13),
+            4000053L to Triple("Yeti", GameCategory.TROOP, 9),
+            4000056L to Triple("Super Miner", GameCategory.TROOP, 13),
+            4000059L to Triple("Electro Dragon", GameCategory.TROOP, 10),
+            4000063L to Triple("Inferno Dragon", GameCategory.TROOP, 13),
+            4000064L to Triple("Super Valkyrie", GameCategory.TROOP, 13),
+            4000065L to Triple("Dragon Rider", GameCategory.TROOP, 7),
+            4000066L to Triple("Super Witch", GameCategory.TROOP, 9),
+            4000076L to Triple("Ice Hound", GameCategory.TROOP, 9),
+            4000080L to Triple("Super Bowler", GameCategory.TROOP, 11),
+            4000082L to Triple("Headhunter", GameCategory.TROOP, 5),
+            4000091L to Triple("Flame Flinger", GameCategory.SIEGE, 6),
+            4000095L to Triple("Electro Titan", GameCategory.TROOP, 6),
+            4000109L to Triple("Ruin Witch", GameCategory.TROOP, 5),
+            4000110L to Triple("Root Rider", GameCategory.TROOP, 5),
+            4000123L to Triple("Druid", GameCategory.TROOP, 7),
+            4000132L to Triple("Thrower", GameCategory.TROOP, 5),
+            4000147L to Triple("Super Yeti", GameCategory.TROOP, 9),
+            4000177L to Triple("Meteor Golem", GameCategory.TROOP, 4),
+            4000195L to Triple("Barch Squad", GameCategory.TROOP, 3),
+            4000196L to Triple("Giant Wizard Squad", GameCategory.TROOP, 3),
+            4000197L to Triple("Wall Breaker Squad", GameCategory.TROOP, 3),
+            4000198L to Triple("Minion Squad", GameCategory.TROOP, 3),
+            4000199L to Triple("Balloon Squad", GameCategory.TROOP, 3),
+            4000200L to Triple("Golem Witch Squad", GameCategory.TROOP, 3),
+            4000201L to Triple("Hog Rider Squad", GameCategory.TROOP, 3),
+            4000202L to Triple("Miner Squad", GameCategory.TROOP, 3),
+            4000203L to Triple("Healer Squad", GameCategory.TROOP, 3),
+            4000204L to Triple("P.E.K.K.A Titan Squad", GameCategory.TROOP, 3),
+            4000205L to Triple("Dragons Squad", GameCategory.TROOP, 3),
+            4000206L to Triple("Baby Dragon Squad", GameCategory.TROOP, 3),
+            28000000L to Triple("Barbarian King", GameCategory.HERO, 115),
+            28000001L to Triple("Archer Queen", GameCategory.HERO, 115),
+            28000002L to Triple("Grand Warden", GameCategory.HERO, 90),
+            28000004L to Triple("Royal Champion", GameCategory.HERO, 60),
+            28000006L to Triple("Minion Prince", GameCategory.HERO, 100),
+            28000007L to Triple("Dragon Duke", GameCategory.HERO, 30),
+            73000011L to Triple("Angry Jelly", GameCategory.PET, 15),
+            107000000L to Triple("Longshot", GameCategory.GUARDIAN, 5),
+            107000001L to Triple("Smasher", GameCategory.GUARDIAN, 10),
+            107000008L to Triple("Logger", GameCategory.GUARDIAN, 5),
+        )
+        expected.forEach { (id, metadata) ->
+            val entity = GameCatalogue.resolve(id)
+            assertEquals("name for $id", metadata.first, entity.name)
+            assertEquals("category for $id", metadata.second, entity.category)
+            assertEquals("max level for $id", metadata.third, GameCatalogue.maxLevel(id))
+            assertTrue("artwork for $id", GameArtwork.drawableResId(id, metadata.third) != null)
+            if (metadata.second in setOf(GameCategory.BUILDING, GameCategory.DEFENCE, GameCategory.TRAP)) {
+                assertTrue("exact TH19 level artwork for $id", GameArtworkLevels.levelArtwork[id]?.containsKey(metadata.third) == true)
+            }
+        }
+        assertEquals(expected.mapValues { it.value.third }, GameCatalogue.verifiedTownHall19MaxLevels)
+        assertEquals("Guardian Shrine", GameCatalogue.resolve(1000105L).name)
+        assertEquals(GameCategory.BUILDING, GameCatalogue.resolve(1000105L).category)
+        assertFalse(GameCatalogue.resolve(1000105L).upgradeable)
+        assertNull(GameCatalogue.maxLevel(1000105L))
+        assertNull(GameArtwork.drawableResId(1000105L))
+        assertEquals("Heroic Spell", GameCatalogue.resolve(26000153L).name)
+        val townHallVariants = mapOf(
+            119000000L to ("Wizard Hall" to R.drawable.coc_buildings_home_village_town_hall_level_19_wizard),
+            119000001L to ("Archer Hall" to R.drawable.coc_buildings_home_village_town_hall_level_19_archer),
+            119000002L to ("Barbarian Hall" to R.drawable.coc_buildings_home_village_town_hall_level_19_barbarian),
+        )
+        townHallVariants.forEach { (id, variant) ->
+            val entity = GameCatalogue.resolve(id)
+            assertEquals(variant.first, entity.name)
+            assertEquals(GameCategory.BUILDING_VARIANT, entity.category)
+            assertFalse(entity.upgradeable)
+            assertEquals(variant.second, GameArtwork.drawableResId(id))
+        }
+        (4000195L..4000206L).forEach { id -> assertTrue("artwork for $id", GameArtwork.drawableResId(id) != null) }
+    }
+
+    @Test fun townHallNineteenImportKeepsNewEntitiesAndRoutesGuardiansAndLabCorrectly() {
+        val village = VillageExportParser.parse("""{"tag":"#Y2099VGPJ","timestamp":${System.currentTimeMillis() / 1000L},
+            "buildings":[{"data":1000001,"lvl":19},{"data":1000105},{"data":1000105,"lvl":0,"timer":30},{"data":1000107,"lvl":0,"timer":60}],
+            "units":[{"data":4000195,"lvl":2,"timer":120}],
+            "spells":[{"data":26000153,"lvl":3,"timer":180}],
+            "heroes":[{"data":28000007,"lvl":29,"timer":240}],
+            "guardians":[{"data":107000001,"lvl":9,"timer":300}],
+            "unknown_th19_section":[{"data":998877,"lvl":1,"timer":60}]}""")
+        assertEquals(19, village.townHall)
+        assertEquals(7, village.jobs.size)
+        assertEquals("Spiky Tower", village.jobs.single { it.dataId == 1000107L }.name)
+        assertEquals(UpgradeCategory.LABORATORY, village.jobs.single { it.dataId == 4000195L }.category)
+        assertEquals(UpgradeCategory.LABORATORY, village.jobs.single { it.dataId == 26000153L }.category)
+        assertEquals(UpgradeCategory.HEROES, village.jobs.single { it.dataId == 28000007L }.category)
+        assertEquals(UpgradeCategory.GUARDIANS, village.jobs.single { it.dataId == 107000001L }.category)
+        assertEquals(listOf(998877L), village.unsupportedDataIds)
+        assertTrue(village.jobs.any { it.name == "Unknown game item (ID 998877)" })
+        assertTrue(village.jobs.any { it.dataId == 1000105L })
+        assertEquals(listOf(1000105L), village.jobsForNonUpgradeableEntities.map { it.dataId })
+    }
+
+    @Test fun unsupportedIdsAndOutOfRangeLevelsAreReportedWithoutDroppingRows() {
+        val village = VillageExportParser.parse(export(upgrades = """
+            [{"data":987654321,"lvl":1,"timer":60},{"data":1000012,"lvl":17,"timer":120}]
+        """))
+        assertEquals(listOf(987654321L), village.unsupportedDataIds)
+        assertEquals(listOf(1000012L), village.jobsAboveCatalogueMax.map { it.dataId })
+        assertEquals(2, village.jobs.size)
+        assertTrue(village.jobs.any { it.name == "Unknown game item (ID 987654321)" })
     }
 
     @Test fun countdownReachesReadyAndClampsProgress() {

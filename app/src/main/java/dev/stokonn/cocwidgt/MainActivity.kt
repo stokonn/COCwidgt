@@ -50,6 +50,7 @@ import dev.stokonn.cocwidgt.data.PlayerIdentity
 import dev.stokonn.cocwidgt.data.PlayerNameCache
 import dev.stokonn.cocwidgt.data.ApiFailureMessage
 import dev.stokonn.cocwidgt.data.ClashApi
+import dev.stokonn.cocwidgt.data.GameCatalogue
 import dev.stokonn.cocwidgt.data.PlayerSnapshot
 import dev.stokonn.cocwidgt.data.StoredProfile
 import dev.stokonn.cocwidgt.data.VillageExportParser
@@ -243,7 +244,23 @@ class MainActivity : ComponentActivity() {
                                         townHall = snapshot.townHall.takeIf { it > 0 }
                                         syncState = "Local village data"
                                         villageStatus = "Imported ${DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(snapshot.exportedAt))} · ${snapshot.jobs.size} active upgrades"
-                                        importMessage = "Village data imported. Widget updated."
+                                        val diagnostics = buildList {
+                                            if (snapshot.unsupportedDataIds.isNotEmpty()) {
+                                                val ids = snapshot.unsupportedDataIds
+                                                add("Unsupported game IDs retained: ${ids.take(5).joinToString()}${if (ids.size > 5) " + ${ids.size - 5} more" else ""}.")
+                                            }
+                                            if (snapshot.jobsAboveCatalogueMax.isNotEmpty()) {
+                                                val levels = snapshot.jobsAboveCatalogueMax.take(5).joinToString { job ->
+                                                    "${job.dataId} level ${job.level} (max ${GameCatalogue.maxLevel(job.dataId)})"
+                                                }
+                                                add("Levels above catalogue: $levels${if (snapshot.jobsAboveCatalogueMax.size > 5) " + more" else ""}.")
+                                            }
+                                            if (snapshot.jobsForNonUpgradeableEntities.isNotEmpty()) {
+                                                val ids = snapshot.jobsForNonUpgradeableEntities.map { it.dataId }.distinct()
+                                                add("Non-upgradeable game IDs retained: ${ids.take(5).joinToString()}${if (ids.size > 5) " + ${ids.size - 5} more" else ""}.")
+                                            }
+                                        }.joinToString(" ")
+                                        importMessage = "Village data imported. Widget updated." + if (diagnostics.isEmpty()) "" else " $diagnostics"
                                         importError = false
                                         lifecycleScope.launch { CocWidget().updateAll(this@MainActivity) }
                                         if (developerKeyConfigured) refreshPlayerName(snapshot.tag)

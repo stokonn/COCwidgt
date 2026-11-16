@@ -60,6 +60,13 @@ data class VillageJob(
 }
 
 data class VillageSnapshot(val tag: String, val name: String, val townHall: Int, val builders: Int, val exportedAt: Long, val jobs: List<VillageJob>) {
+    val unsupportedDataIds: List<Long>
+        get() = jobs.asSequence().map { it.dataId }.filter { GameCatalogue.find(it) == null }.distinct().toList()
+    val jobsAboveCatalogueMax: List<VillageJob>
+        get() = jobs.filter { job -> GameCatalogue.maxLevel(job.dataId)?.let { job.level > it } == true }
+    val jobsForNonUpgradeableEntities: List<VillageJob>
+        get() = jobs.filter { GameCatalogue.find(it.dataId)?.upgradeable == false }
+
     fun save(context: Context) {
         val array = JSONArray()
         jobs.forEach { job -> array.put(JSONObject().apply {
@@ -148,7 +155,8 @@ object VillageExportParser {
 
     fun parse(raw: String): VillageSnapshot {
         require(raw.length <= 1_000_000) { "Export is too large (maximum 1 MB)." }
-        val root = runCatching { JSONObject(raw.trim()) }.getOrElse { throw IllegalArgumentException("This is not valid village export JSON.") }
+        val json = raw.trim().removePrefix("\uFEFF").trimStart()
+        val root = runCatching { JSONObject(json) }.getOrElse { throw IllegalArgumentException("This is not valid village export JSON.") }
         val tag = PlayerIdentity.normalizeTag(root.optString("tag"))
         require(tag != null) { "Export is missing a valid Player Tag." }
         require(root.has("timestamp")) { "Export is missing its creation timestamp." }

@@ -66,12 +66,6 @@ private const val ROW_MARGIN_DP = 2
 private const val COMPACT_ROW_HEIGHT_DP = 24
 private const val COMPACT_ROW_MARGIN_DP = 2
 
-// The scrolling ListView used by Glance does not consistently account for its weighted
-// sibling on launcher hosts. Reserve the fixed header, gap, footer and outer padding directly.
-private const val STANDARD_HEADER_HEIGHT_DP = 50
-private const val STANDARD_LIST_GAP_DP = 7
-private const val STANDARD_FOOTER_HEIGHT_DP = 24
-
 /** Town Hall artwork entity (level-resolved for the header avatar). */
 private const val TOWN_HALL_DATA_ID = 1000001L
 
@@ -183,15 +177,17 @@ class CocWidget : GlanceAppWidget() {
                     Text("IMPORT VILLAGE DATA", style = TextStyle(color = ColorProvider(Gold)))
                     Text("Open COCwidgt to add an export.", maxLines = 1, style = TextStyle(color = ColorProvider(Muted)))
                 } else if (compact) {
-                    Spacer(GlanceModifier.height(4.dp))
-                    val activeCount = village.jobs.count { it.remainingMs(now) > 0 }
-                    val stale = now - village.exportedAt > 24 * 60 * 60 * 1000L
-                    val activeLine = "$activeCount ACTIVE${if (stale) " · STALE" else ""} · $statusText"
-                    Text(WidgetFit.ellipsize(activeLine, WidgetFit.maxChars(contentWidth, 11)),
-                        maxLines = 1, style = TextStyle(color = ColorProvider(Gold), fontSize = 11.sp))
+                    if (WidgetContentPlanner.showCompactStatus(heightDp)) {
+                        Spacer(GlanceModifier.height(4.dp))
+                        val activeCount = village.jobs.count { it.remainingMs(now) > 0 }
+                        val stale = now - village.exportedAt > 24 * 60 * 60 * 1000L
+                        val activeLine = "$activeCount ACTIVE${if (stale) " · STALE" else ""} · $statusText"
+                        Text(WidgetFit.ellipsize(activeLine, WidgetFit.maxChars(contentWidth, 11)),
+                            maxLines = 1, style = TextStyle(color = ColorProvider(Gold), fontSize = 11.sp))
+                    }
                     UpgradeList(
                         GlanceModifier.fillMaxWidth().height(
-                            (heightDp - contentPadding * 2 - 32 - 4 - 14).coerceAtLeast(24).dp
+                            WidgetContentPlanner.listHeight(heightDp, compact).coerceAtLeast(24).dp
                         ),
                         entries, village.builders, now, contentWidth, compact,
                     )
@@ -202,8 +198,7 @@ class CocWidget : GlanceAppWidget() {
                     Spacer(GlanceModifier.height(7.dp))
                     UpgradeList(
                         GlanceModifier.fillMaxWidth().height(
-                        (heightDp - contentPadding * 2 - STANDARD_HEADER_HEIGHT_DP -
-                                STANDARD_LIST_GAP_DP - STANDARD_FOOTER_HEIGHT_DP).coerceAtLeast(24).dp
+                            WidgetContentPlanner.listHeight(heightDp, compact).coerceAtLeast(24).dp
                         ),
                         entries, village.builders, now, contentWidth, compact,
                     )

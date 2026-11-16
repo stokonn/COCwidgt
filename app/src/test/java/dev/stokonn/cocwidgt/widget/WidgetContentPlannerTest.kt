@@ -54,7 +54,7 @@ class WidgetContentPlannerTest {
     @Test fun maximumViewportUsesAvailableHeightAndTracksRemainingRows() {
         val selection = WidgetContentPlanner.select(sampleJobs(30), 900, 1_200, now)
         assertTrue(selection.items.size > WidgetContentPlanner.select(sampleJobs(30), 480, 360, now).items.size)
-        assertEquals(WidgetSection.entries.toSet(), selection.groups.map { it.section }.toSet())
+        assertEquals(setOf(WidgetSection.BUILDERS, WidgetSection.LAB_PETS), selection.groups.map { it.section }.toSet())
         assertEquals(selection.items.size, selection.groups.sumOf { it.items.size })
         assertEquals(30, selection.items.size + selection.hiddenCount)
     }
@@ -81,6 +81,16 @@ class WidgetContentPlannerTest {
             assertEquals(5, selection.hiddenCount)
             assertTrue(selection.groups.isEmpty())
         }
+    }
+
+    @Test fun listViewportUsesTheSameFixedRegionsForPlanningAndRendering() {
+        assertEquals(110 - 16 - 40, WidgetContentPlanner.listHeight(110, true))
+        assertEquals(360 - 26 - 50 - 7 - 24, WidgetContentPlanner.listHeight(360, false))
+        assertEquals(0, WidgetContentPlanner.listHeight(1, true))
+        assertEquals(54, WidgetContentPlanner.listHeight(110, true))
+        assertEquals(76, WidgetContentPlanner.listHeight(150, true))
+        assertEquals(false, WidgetContentPlanner.showCompactStatus(139))
+        assertEquals(true, WidgetContentPlanner.showCompactStatus(140))
     }
 
     @Test fun compactOnlySwitchesTypographyNeverContent() {
@@ -131,6 +141,14 @@ class WidgetContentPlannerTest {
         val selection = WidgetContentPlanner.select(jobs, 480, 600, now)
         val labAndPets = selection.groups.single { it.section == WidgetSection.LAB_PETS }
         assertEquals(listOf(4000031L, 4000000L, 26000002L), labAndPets.items.map { it.dataId })
+    }
+
+    @Test fun guardianResearchGetsItsOwnGroupWithoutChangingOtherRows() {
+        val jobs = listOf(job(0, 107000001L, section = "Guardians"), job(1, 26000000L, section = "Laboratory"))
+        val selection = WidgetContentPlanner.select(jobs, 480, 600, now)
+        assertEquals(listOf(WidgetSection.LAB_PETS, WidgetSection.GUARDIANS), selection.groups.map { it.section })
+        assertEquals(107000001L, selection.groups.last().items.single().dataId)
+        assertEquals(2, selection.items.size + selection.hiddenCount)
     }
 
     @Test fun completedUpgradesAreExcludedInsteadOfRendered() {
