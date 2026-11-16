@@ -1,6 +1,9 @@
 name: Build signed v0.6.0 test APK
 
 on:
+  push:
+    branches:
+      - feature/v0.6.0-th19-adaptive-layout
   workflow_dispatch:
 
 permissions:
