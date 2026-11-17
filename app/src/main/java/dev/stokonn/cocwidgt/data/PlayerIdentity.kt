@@ -150,6 +150,7 @@ data class StoredProfile(
  */
 object PlayerProfileCodec {
     const val PREFS = "cocwidgt_player"
+    fun prefsName(tag: String) = "${PREFS}_${requireNotNull(PlayerIdentity.normalizeTag(tag)).removePrefix("#") }"
 
     // Legacy key written by the first widget release; still honoured on read.
     private const val LEGACY_TAG_KEY = "player_tag"

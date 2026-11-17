@@ -84,6 +84,12 @@ Important distinctions:
 
 You do not need to configure an API key to use the core import and widget features.
 
+## Multiple accounts
+
+Add accounts with their Player Tags from the Accounts card in the app. Adding an account fetches its public profile using the optional Developer API key. Each account's village export and cached profile are stored separately; an existing single account is migrated automatically on first launch. Account names are local labels.
+
+Each newly placed widget asks which saved account it should show. Existing widgets keep their saved account when the active account changes. If that account is removed, the widget displays the active account instead. Widget refreshes follow Android's scheduled update limits.
+
 ## Data and privacy
 
 - Village JSON is parsed and stored locally on your device.
@@ -136,14 +142,14 @@ Keep the keystore and passwords out of source control and build logs. A release 
 
 The Android CI workflow runs unit tests, lint and a debug build for pull requests and pushes to `main`.
 
-The v0.5.1 signed prerelease workflow is historical and is triggered by the `v0.5.1` tag. It requires these GitHub Actions repository secrets:
+The version-specific signed prerelease workflows use GitHub Actions repository secrets:
 
 - `RELEASE_KEYSTORE_BASE64` — base64-encoded Android release keystore
 - `RELEASE_STORE_PASSWORD` — keystore password
 - `RELEASE_KEY_ALIAS` — signing key alias
 - `RELEASE_KEY_PASSWORD` — signing key password
 
-The workflow builds and verifies the signed APK, checks the package name and version metadata, then publishes the APK as `cocw0.5.1.apk` together with a SHA-256 checksum file. The release is marked as a **GitHub prerelease**, not a stable release.
+The v0.6.0 workflow builds and verifies the signed APK, checks its package name, version metadata and original signing certificate, then publishes `cocw0.6.0.apk` with a SHA-256 checksum file. The release is marked as a **GitHub prerelease**, not a stable release.
 
 ## Known limitations
 

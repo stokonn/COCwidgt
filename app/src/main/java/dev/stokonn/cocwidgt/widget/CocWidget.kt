@@ -38,10 +38,11 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import dev.stokonn.cocwidgt.MainActivity
-import dev.stokonn.cocwidgt.R
 import dev.stokonn.cocwidgt.data.GameArtwork
-import dev.stokonn.cocwidgt.data.PlayerHeaderState
 import dev.stokonn.cocwidgt.data.PlayerIdentity
+import dev.stokonn.cocwidgt.data.AccountStore
+import dev.stokonn.cocwidgt.data.WidgetAccountStore
+import dev.stokonn.cocwidgt.data.PlayerProfileCodec
 import dev.stokonn.cocwidgt.data.PlayerNameCache
 import dev.stokonn.cocwidgt.data.StoredProfile
 import dev.stokonn.cocwidgt.data.ExportStatus
@@ -50,24 +51,23 @@ import dev.stokonn.cocwidgt.data.VillageSnapshot
 import dev.stokonn.cocwidgt.sync.WidgetRefreshWorker
 
 private val Background = Color(0xFF281D17)
-private val Frame = Color(0xFF493428)
-private val Panel = Color(0xFF39281F)
+private val Frame = Color(0xFF28190F)
+private val Track = Color(0xFF2F2212)
 private val Gold = Color(0xFFFFD36B)
 private val Cream = Color(0xFFFFF2D8)
 private val Muted = Color(0xFFCDB9A2)
-private val Green = Color(0xFF9BCB70)
+private val Green = Color(0xFFA0D362)
 private val Alert = Color(0xFFFF8A78)
 
-// Row geometry of the reference design: the green progress bar IS the row (dark track with a
-// green fill sized from the absolute-timestamp progress). Heights must stay in sync with the
-// constants the widget content uses when rendering rows.
+// The green progress fill sits inside each dark track; the planner and renderer share these slots.
 private const val ROW_HEIGHT_DP = 34
 private const val ROW_MARGIN_DP = 2
 private const val COMPACT_ROW_HEIGHT_DP = 24
 private const val COMPACT_ROW_MARGIN_DP = 2
-
-/** Town Hall artwork entity (level-resolved for the header avatar). */
-private const val TOWN_HALL_DATA_ID = 1000001L
+private const val STANDARD_ROW_SLOT_DP = ROW_HEIGHT_DP + ROW_MARGIN_DP
+private const val COMPACT_ROW_SLOT_DP = COMPACT_ROW_HEIGHT_DP + COMPACT_ROW_MARGIN_DP
+private const val COMPACT_FOOTER_DP = 20
+private const val STANDARD_FOOTER_DP = 24
 
 /** One rendered line of the scrolling list: a category heading or an upgrade row. */
 private sealed class ListEntry(val id: Long) {
@@ -76,19 +76,16 @@ private sealed class ListEntry(val id: Long) {
 }
 
 /**
- * Exact-size widget matching the supplied visual reference: warm dark brown rounded surface,
- * player header with avatar, Player Tag, Town Hall and a Sync chip, category sections with
- * counts, green rounded progress rows with icons/names/levels/countdowns, and a bottom status
- * area with quick chips and the last successful sync time.
+ * Exact-size widget following the target's warm brown panel, compact player/Town Hall header,
+ * separate Builders/Lab/Pets sections, green progress rows and a persistent export/status footer.
  *
  * There is exactly ONE vertical list at every widget size. The row planner uses the exact
  * launcher-reported size to fit additional rows into taller widgets, while the header and
  * import status remain visible. Countdown and progress use absolute timestamps,
  * and periodic re-renders are scheduled through WorkManager / the system update period.
  *
- * The root background honours the per-widget transparency setting (see [WidgetAppearance]);
- * only the surface colour is affected — text, icons and progress rows keep their own fully
- * opaque colours.
+ * The panel and frame honour the per-widget transparency setting (see [WidgetAppearance]);
+ * text, icons and progress rows keep their own fully opaque colours.
  */
 class CocWidget : GlanceAppWidget() {
     // The content count and row density depend on the launcher-reported viewport. Exact asks
@@ -106,113 +103,99 @@ class CocWidget : GlanceAppWidget() {
             val widthDp = size.width.value.toInt()
             val heightDp = size.height.value.toInt()
             val settings = ctx.getSharedPreferences("cocwidgt", Context.MODE_PRIVATE)
-            val configuredTag = PlayerIdentity.normalizeTag(settings.getString("player_tag", null))
-            val village = VillageSnapshot.load(ctx)?.takeIf {
-                configuredTag == null || it.tag == configuredTag
+            val accounts = AccountStore.migrate(ctx)
+            val widgetId = (id as? AppWidgetId)?.appWidgetId
+            val widgetPrefs = ctx.getSharedPreferences("cocwidgt_widget_accounts", Context.MODE_PRIVATE)
+            val accountTag = widgetId?.let { WidgetAccountStore.accountTag(widgetPrefs, it, accounts.activeTag(), accounts.accounts().map { a -> a.tag }.toSet()) }
+                ?: accounts.activeTag()
+            if (widgetId != null && accountTag != null && widgetPrefs.getString(WidgetAccountStore.key(widgetId), null) == null) {
+                WidgetAccountStore.assign(widgetPrefs, widgetId, accountTag)
             }
+            val configuredTag = accountTag
+            val village = configuredTag?.let { VillageSnapshot.load(ctx, it) }
             val header = PlayerIdentity.headerState(
                 exportTag = village?.tag,
                 exportName = village?.name,
                 exportTownHall = village?.townHall ?: 0,
-                settingsTag = settings.getString("player_tag", null),
-                profile = StoredProfile(null, null, -1, 0L, null),
+                settingsTag = configuredTag,
+                profile = configuredTag?.let { PlayerProfileCodec.decode(ctx.getSharedPreferences(PlayerProfileCodec.prefsName(it), Context.MODE_PRIVATE).all) }
+                    ?: StoredProfile(null, null, -1, 0L, null),
             )
-            val cachedName = PlayerNameCache.decode(ctx.getSharedPreferences("cocwidgt_player_name", Context.MODE_PRIVATE).all)
+            val cachedName = PlayerNameCache.decode(ctx.getSharedPreferences(configuredTag?.let(PlayerNameCache::prefsName) ?: "cocwidgt_player_name", Context.MODE_PRIVATE).all)
             val displayName = PlayerIdentity.displayName(
                 header.expectedTag, cachedName?.tag, cachedName?.name, village?.tag, village?.name,
-                settings.getString("player_name_tag", null), settings.getString("player_name", null)
+                configuredTag, accounts.manualName(configuredTag)
             )
             val now = System.currentTimeMillis()
             val selection = WidgetContentPlanner.select(village?.jobs.orEmpty(), widthDp, heightDp, now)
             val compact = selection.compact
-            val contentPadding = if (compact) 8 else 13
-            val contentWidth = widthDp - contentPadding * 2
+            val contentPadding = if (compact) 6 else 8
+            val contentWidth = widthDp - (contentPadding + 2) * 2
 
             // Per-widget background transparency (global default when this widget has no
             // override). Applied to the root surface only — see WidgetAppearance.
-            val appWidgetId = (id as? AppWidgetId)?.appWidgetId
+            val appWidgetId = widgetId
             val transparency = WidgetSettingsStore(
                 ctx.getSharedPreferences(WidgetSettingsCodec.PREFS, Context.MODE_PRIVATE)
             ).transparency(appWidgetId)
             val surface = Color(WidgetAppearance.backgroundArgb(transparency))
+            val frameSurface = Frame.copy(alpha = (100 - transparency) / 100f)
 
-            // One status string for both sizes: failure label first, then the last successful
-            // sync time (relative, derived from the absolute timestamp on every render).
-            val importStatus = if (village != null) "local import · ${ExportStatus.age(now, village.exportedAt)}" else "import village data"
-            val statusText = if (selection.hiddenCount > 0) "${selection.hiddenCount} more in app" else importStatus
-            val statusColor = Muted
+            val statusText = if (selection.hiddenCount > 0) "${selection.hiddenCount} more in app" else "${selection.items.size} active upgrades"
 
-            // Header budget: content minus its own padding, the avatar, the Sync chip and the
-            // gaps between them — both text lines are ellipsized to this width so a long name
-            // or tag can never push into the avatar or the chip.
-            val headerPaddingH = if (compact) 8 else 10
-            val avatarSize = if (compact) 18 else 22
-            val syncChipWidth = 56
-            val headerTextWidth = (contentWidth - headerPaddingH * 2 - avatarSize - syncChipWidth - 16)
-                .coerceAtLeast(40)
+            // Keep the title within the measured width after the Town Hall label and Sync chip.
+            val headerTextWidth = (contentWidth - 108).coerceAtLeast(0)
 
-            // Deterministic item ids for the scrolling list: same content → same ids, so the
-            // launcher keeps the scroll position across re-renders; every entry gets its own
-            // id so duplicates can never collide.
+            // Deterministic item ids for the list. Every entry gets its own id so duplicates
+            // can never collide when the launcher re-renders after a resize.
             val entries = buildList {
                 var nextId = 1L
                 selection.groups.forEach { group ->
-                    add(ListEntry.Heading(nextId++, group))
+                    if (selection.showSectionHeadings) add(ListEntry.Heading(nextId++, group))
                     group.items.forEach { job -> add(ListEntry.Upgrade(nextId++, job)) }
                 }
             }
 
             Column(
-                GlanceModifier.fillMaxSize().background(surface).cornerRadius(20.dp)
-                    .padding(contentPadding.dp),
+                GlanceModifier.fillMaxSize().background(frameSurface).cornerRadius(20.dp)
+                    .padding(2.dp).background(surface).cornerRadius(18.dp).padding(contentPadding.dp),
                 verticalAlignment = Alignment.Vertical.Top
             ) {
-                PlayerHeader(
-                        displayName, header.expectedTag ?: PlayerHeaderState.NO_TAG_LABEL,
-                    header.townHall, compact, headerTextWidth,
-                    GameArtwork.drawableResId(TOWN_HALL_DATA_ID, header.townHall),
-                )
+                PlayerHeader(displayName, header.townHall, compact, headerTextWidth)
                 if (village == null) {
                     Spacer(GlanceModifier.height(6.dp))
                     Text("IMPORT VILLAGE DATA", style = TextStyle(color = ColorProvider(Gold)))
                     Text("Open COCwidgt to add an export.", maxLines = 1, style = TextStyle(color = ColorProvider(Muted)))
                 } else if (compact) {
-                    if (WidgetContentPlanner.showCompactStatus(heightDp)) {
-                        Spacer(GlanceModifier.height(4.dp))
-                        val activeCount = village.jobs.count { it.remainingMs(now) > 0 }
-                        val stale = now - village.exportedAt > 24 * 60 * 60 * 1000L
-                        val activeLine = "$activeCount ACTIVE${if (stale) " · STALE" else ""} · $statusText"
-                        Text(WidgetFit.ellipsize(activeLine, WidgetFit.maxChars(contentWidth, 11)),
-                            maxLines = 1, style = TextStyle(color = ColorProvider(Gold), fontSize = 11.sp))
-                    }
+                    Spacer(GlanceModifier.height(3.dp))
                     UpgradeList(
                         GlanceModifier.fillMaxWidth().height(
-                            WidgetContentPlanner.listHeight(heightDp, compact).coerceAtLeast(24).dp
+                            WidgetContentPlanner.listHeight(heightDp, compact).dp
                         ),
-                        entries, village.builders, now, contentWidth, compact,
+                        entries, village.builders, now, contentWidth, compact, selection.rowHeightDp,
                     )
-                    if (selection.items.isEmpty()) {
-                        Text("NO ACTIVE UPGRADES", maxLines = 1, style = TextStyle(color = ColorProvider(Muted), fontSize = 12.sp))
-                    }
-                } else {
-                    Spacer(GlanceModifier.height(7.dp))
-                    UpgradeList(
-                        GlanceModifier.fillMaxWidth().height(
-                            WidgetContentPlanner.listHeight(heightDp, compact).coerceAtLeast(24).dp
-                        ),
-                        entries, village.builders, now, contentWidth, compact,
-                    )
-                    if (selection.items.isEmpty()) {
-                        Text("NO ACTIVE UPGRADES", maxLines = 1, style = TextStyle(color = ColorProvider(Muted), fontSize = 12.sp))
-                        Spacer(GlanceModifier.defaultWeight())
-                    }
+                    Spacer(GlanceModifier.height(3.dp))
                     BottomStatus(
-                        topJob = selection.items.firstOrNull(),
                         exportedAt = village.exportedAt,
                         now = now,
                         statusText = statusText,
-                        statusColor = statusColor,
                         contentWidth = contentWidth,
+                        compact = true,
+                    )
+                } else {
+                    Spacer(GlanceModifier.height(5.dp))
+                    UpgradeList(
+                        GlanceModifier.fillMaxWidth().height(
+                            WidgetContentPlanner.listHeight(heightDp, compact).dp
+                        ),
+                        entries, village.builders, now, contentWidth, compact, selection.rowHeightDp,
+                    )
+                    BottomStatus(
+                        exportedAt = village.exportedAt,
+                        now = now,
+                        statusText = statusText,
+                        contentWidth = contentWidth,
+                        compact = false,
                     )
                 }
             }
@@ -222,9 +205,8 @@ class CocWidget : GlanceAppWidget() {
 }
 
 /**
- * The single vertical upgrade list: one category heading + its rows per group, in canonical
- * display order, scrolling inside the fixed header/status frame. Every active upgrade is
- * rendered — nothing is dropped or hidden to fit the current height.
+ * The single vertical upgrade list. Visible rows are sized by [WidgetContentPlanner] to fill
+ * the measured viewport without pushing the footer out of the widget.
  */
 @androidx.compose.runtime.Composable
 private fun UpgradeList(
@@ -234,8 +216,16 @@ private fun UpgradeList(
     now: Long,
     contentWidth: Int,
     compact: Boolean,
+    rowHeightDp: Int,
 ) {
-    if (entries.isEmpty()) return
+    if (entries.isEmpty()) {
+        Column(modifier) {
+            Text("NO ACTIVE UPGRADES", maxLines = 1,
+                style = TextStyle(color = ColorProvider(Muted), fontSize = if (compact) 11.sp else 12.sp))
+            Spacer(GlanceModifier.defaultWeight())
+        }
+        return
+    }
     LazyColumn(modifier) {
         items(entries, itemId = { it.id }) { entry ->
             when (entry) {
@@ -243,8 +233,8 @@ private fun UpgradeList(
                     val group = entry.group
                     // Data-driven chip: the builder count on the Buildings section. Only shown
                     // when the measured width can afford it.
-                    val chip = if (group.section == WidgetSection.BUILDERS && contentWidth >= 200) {
-                        "$builders builders"
+                    val chip = if (group.section == WidgetSection.BUILDERS && contentWidth >= 170) {
+                        "$builders/6"
                     } else {
                         null
                     }
@@ -259,9 +249,9 @@ private fun UpgradeList(
                     )
                 }
                 is ListEntry.Upgrade -> if (compact) {
-                    CompactUpgradeRow(entry.job, now, contentWidth)
+                    CompactUpgradeRow(entry.job, now, contentWidth, rowHeightDp)
                 } else {
-                    UpgradeRow(entry.job, now, contentWidth)
+                    UpgradeRow(entry.job, now, contentWidth, rowHeightDp)
                 }
             }
         }
@@ -269,43 +259,27 @@ private fun UpgradeList(
 }
 
 @androidx.compose.runtime.Composable
-private fun PlayerHeader(name: String, tag: String, townHall: Int, compact: Boolean, textWidth: Int, townHallArtwork: Int?) {
-    val line1Sp = if (compact) 13 else 15
-    val line2Sp = if (compact) 11 else 12
-    // The reference identity line is the Player Tag + Town Hall; the nickname (the only real
-    // name we have) leads when it exists — the placeholder is never rendered as the title.
-    val hasRealName = PlayerIdentity.usableName(name) != null && name != PlayerHeaderState.FALLBACK_NAME && name != tag
-    val line1 = if (hasRealName) name else tag
-    val line2 = buildList {
-        if (hasRealName) add(tag)
-        if (townHall > 0) add("TH$townHall")
-    }.joinToString("  ·  ")
+private fun PlayerHeader(name: String, townHall: Int, compact: Boolean, textWidth: Int) {
+    val titleSize = if (compact) 12 else 14
+    val hallLabel = townHall.takeIf { it > 0 }?.let { "TH$it" }.orEmpty()
     Row(
-        GlanceModifier.fillMaxWidth().background(Frame).cornerRadius(13.dp)
-            .padding(horizontal = if (compact) 8.dp else 10.dp, vertical = if (compact) 5.dp else 7.dp)
+        GlanceModifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = if (compact) 3.dp else 4.dp)
             .clickable(actionStartActivity<MainActivity>()),
         verticalAlignment = Alignment.Vertical.CenterVertically
     ) {
-        Image(
-            ImageProvider(townHallArtwork ?: R.drawable.coc_buildings_home_village_town_hall_level_1),
-            contentDescription = "Village",
-            modifier = GlanceModifier.size(if (compact) 18.dp else 22.dp),
+        Text(
+            WidgetFit.ellipsize(name, WidgetFit.maxChars(textWidth, titleSize)),
+            maxLines = 1, modifier = GlanceModifier.defaultWeight(),
+            style = TextStyle(color = ColorProvider(Cream), fontSize = titleSize.sp, fontWeight = FontWeight.Bold),
         )
-        Spacer(GlanceModifier.width(6.dp))
-        Column(GlanceModifier.defaultWeight()) {
-            // Glance cannot ellipsize, so both lines are trimmed to the measured budget first.
-            Text(WidgetFit.ellipsize(line1, WidgetFit.maxChars(textWidth, line1Sp)), maxLines = 1,
-                style = TextStyle(color = ColorProvider(Cream), fontSize = line1Sp.sp, fontWeight = FontWeight.Bold))
-            if (line2.isNotEmpty()) {
-                Text(WidgetFit.ellipsize(line2, WidgetFit.maxChars(textWidth, line2Sp)), maxLines = 1,
-                    style = TextStyle(color = ColorProvider(Gold), fontSize = line2Sp.sp))
-            }
+        if (hallLabel.isNotEmpty()) {
+            Spacer(GlanceModifier.width(5.dp))
+            Text(hallLabel, maxLines = 1,
+                style = TextStyle(color = ColorProvider(Gold), fontSize = titleSize.sp, fontWeight = FontWeight.Bold))
         }
-        Spacer(GlanceModifier.width(4.dp))
-        // Reference-style Sync chip: opens the app (the widget itself already does), kept as a
-        // visual affordance with a fixed measured width for the text budget above.
+        Spacer(GlanceModifier.width(8.dp))
         Row(
-            GlanceModifier.background(Gold).cornerRadius(9.dp).padding(horizontal = 8.dp, vertical = 2.dp)
+            GlanceModifier.background(Gold).cornerRadius(9.dp).padding(horizontal = 7.dp, vertical = 3.dp)
         ) {
             Text("⟳ Sync", maxLines = 1,
                 style = TextStyle(color = ColorProvider(Background), fontSize = 10.sp, fontWeight = FontWeight.Bold))
@@ -329,13 +303,13 @@ private fun CategoryHeader(label: String, count: Int, chip: String?, hasGoblin: 
         }
         if (chip != null) {
             Spacer(GlanceModifier.width(5.dp))
-            Row(GlanceModifier.background(Panel).cornerRadius(8.dp).padding(horizontal = 5.dp, vertical = 1.dp)) {
+            Row(GlanceModifier.background(Frame).cornerRadius(8.dp).padding(horizontal = 5.dp, vertical = 1.dp)) {
                 Text(chip, maxLines = 1,
                     style = TextStyle(color = ColorProvider(Cream), fontSize = 10.sp))
             }
         }
         Spacer(GlanceModifier.width(4.dp))
-        Row(GlanceModifier.background(Panel).cornerRadius(8.dp).padding(horizontal = 5.dp, vertical = 1.dp)) {
+        Row(GlanceModifier.background(Frame).cornerRadius(8.dp).padding(horizontal = 5.dp, vertical = 1.dp)) {
             Text("$count", maxLines = 1,
                 style = TextStyle(color = ColorProvider(Gold), fontSize = 10.sp, fontWeight = FontWeight.Bold))
         }
@@ -349,7 +323,11 @@ private fun CategoryHeader(label: String, count: Int, chip: String?, hasGoblin: 
  * never overflow the row.
  */
 @androidx.compose.runtime.Composable
-private fun UpgradeRow(job: VillageJob, now: Long, rowWidth: Int) {
+private fun UpgradeRow(job: VillageJob, now: Long, rowWidth: Int, rowHeightDp: Int) {
+    val iconSize = (20 + (rowHeightDp - STANDARD_ROW_SLOT_DP) / 4).coerceIn(20, 36).dp
+    val titleSize = (12 + (rowHeightDp - STANDARD_ROW_SLOT_DP) / 16).coerceIn(12, 15)
+    val timerSize = (titleSize - 1).coerceAtLeast(11)
+    val cardHeight = (rowHeightDp - ROW_MARGIN_DP).coerceAtLeast(ROW_HEIGHT_DP)
     val progress = job.progress(now)
     val filled = when {
         progress == null || progress <= 0f -> 0
@@ -357,13 +335,13 @@ private fun UpgradeRow(job: VillageJob, now: Long, rowWidth: Int) {
     }
     Column(GlanceModifier.fillMaxWidth().padding(bottom = ROW_MARGIN_DP.dp)) {
         Box(
-            GlanceModifier.fillMaxWidth().height(ROW_HEIGHT_DP.dp)
-                .background(Frame).cornerRadius(9.dp),
+            GlanceModifier.fillMaxWidth().height(cardHeight.dp)
+                .background(Track).cornerRadius(9.dp),
             contentAlignment = Alignment.TopStart,
         ) {
             if (filled > 0) {
                 Row(
-                    GlanceModifier.width(filled.dp).height(ROW_HEIGHT_DP.dp)
+                    GlanceModifier.width(filled.dp).height(cardHeight.dp)
                         .background(Green).cornerRadius(9.dp)
                 ) {
                     Spacer(GlanceModifier.size(1.dp))
@@ -373,24 +351,24 @@ private fun UpgradeRow(job: VillageJob, now: Long, rowWidth: Int) {
                 GlanceModifier.fillMaxSize().padding(horizontal = 7.dp),
                 verticalAlignment = Alignment.Vertical.CenterVertically
             ) {
-                EntityArtwork(job, 20.dp)
+                EntityArtwork(job, iconSize)
                 Spacer(GlanceModifier.width(5.dp))
                 if (job.goblin == true) {
                     GoblinBadge()
                     Spacer(GlanceModifier.width(4.dp))
                 }
-                val countdown = "⏱ ${job.countdown(now)}"
+                val countdown = "◷ ${WidgetFit.countdown(job.remainingMs(now))}"
                 // Budget the title so title + countdown (+ badge) fit the measured row.
-                val budget = WidgetFit.maxChars(rowWidth - 14 - 20 - 5, 12) -
+                val budget = WidgetFit.maxChars(rowWidth - 14 - iconSize.value.toInt() - 5, titleSize) -
                     countdown.length - if (job.goblin == true) 10 else 0
                 Text(
                     WidgetFit.ellipsize("${job.name}${job.count.takeIf { it > 1 }?.let { " ×$it" }.orEmpty()} · ${job.currentLevel?.let { "$it → " }.orEmpty()}${job.level}", budget),
                     maxLines = 1, modifier = GlanceModifier.defaultWeight(),
-                    style = TextStyle(color = ColorProvider(Cream), fontSize = 12.sp, fontWeight = FontWeight.Bold),
+                    style = TextStyle(color = ColorProvider(Cream), fontSize = titleSize.sp, fontWeight = FontWeight.Bold),
                 )
                 Spacer(GlanceModifier.width(4.dp))
                 Text(countdown, maxLines = 1,
-                    style = TextStyle(color = ColorProvider(Gold), fontSize = 11.sp, fontWeight = FontWeight.Bold))
+                    style = TextStyle(color = ColorProvider(Gold), fontSize = timerSize.sp, fontWeight = FontWeight.Bold))
             }
         }
     }
@@ -398,7 +376,11 @@ private fun UpgradeRow(job: VillageJob, now: Long, rowWidth: Int) {
 
 /** Compact variant of [UpgradeRow]: same integrated green progress row, tighter typography. */
 @androidx.compose.runtime.Composable
-private fun CompactUpgradeRow(job: VillageJob, now: Long, rowWidth: Int) {
+private fun CompactUpgradeRow(job: VillageJob, now: Long, rowWidth: Int, rowHeightDp: Int) {
+    val iconSize = (16 + (rowHeightDp - COMPACT_ROW_SLOT_DP) / 4).coerceIn(16, 32).dp
+    val titleSize = (11 + (rowHeightDp - COMPACT_ROW_SLOT_DP) / 16).coerceIn(11, 14)
+    val timerSize = titleSize
+    val cardHeight = (rowHeightDp - COMPACT_ROW_MARGIN_DP).coerceAtLeast(COMPACT_ROW_HEIGHT_DP)
     val progress = job.progress(now)
     val filled = when {
         progress == null || progress <= 0f -> 0
@@ -406,13 +388,13 @@ private fun CompactUpgradeRow(job: VillageJob, now: Long, rowWidth: Int) {
     }
     Column(GlanceModifier.fillMaxWidth().padding(bottom = COMPACT_ROW_MARGIN_DP.dp)) {
         Box(
-            GlanceModifier.fillMaxWidth().height(COMPACT_ROW_HEIGHT_DP.dp)
-                .background(Frame).cornerRadius(8.dp),
+            GlanceModifier.fillMaxWidth().height(cardHeight.dp)
+                .background(Track).cornerRadius(8.dp),
             contentAlignment = Alignment.TopStart,
         ) {
             if (filled > 0) {
                 Row(
-                    GlanceModifier.width(filled.dp).height(COMPACT_ROW_HEIGHT_DP.dp)
+                    GlanceModifier.width(filled.dp).height(cardHeight.dp)
                         .background(Green).cornerRadius(8.dp)
                 ) {
                     Spacer(GlanceModifier.size(1.dp))
@@ -422,23 +404,23 @@ private fun CompactUpgradeRow(job: VillageJob, now: Long, rowWidth: Int) {
                 GlanceModifier.fillMaxSize().padding(horizontal = 6.dp),
                 verticalAlignment = Alignment.Vertical.CenterVertically
             ) {
-                EntityArtwork(job, 16.dp)
+                EntityArtwork(job, iconSize)
                 Spacer(GlanceModifier.width(4.dp))
                 if (job.goblin == true) {
                     GoblinBadge()
                     Spacer(GlanceModifier.width(4.dp))
                 }
                 // The countdown is kept whole; only the name gives up space.
-                val countdown = "⏱ ${job.countdown(now)}"
-                val budget = WidgetFit.maxChars(rowWidth - 12 - 16 - 4, 11) -
+                val countdown = "◷ ${WidgetFit.countdown(job.remainingMs(now))}"
+                val budget = WidgetFit.maxChars(rowWidth - 12 - iconSize.value.toInt() - 4, titleSize) -
                     countdown.length - if (job.goblin == true) 9 else 0
                 val levelText = job.currentLevel?.let { "$it→${job.level}" } ?: "${job.level}"
                 Text(WidgetFit.ellipsize("${job.name}${job.count.takeIf { it > 1 }?.let { " ×$it" }.orEmpty()} · $levelText", budget), maxLines = 1,
                     modifier = GlanceModifier.defaultWeight(),
-                    style = TextStyle(color = ColorProvider(Cream), fontSize = 11.sp, fontWeight = FontWeight.Bold))
+                    style = TextStyle(color = ColorProvider(Cream), fontSize = titleSize.sp, fontWeight = FontWeight.Bold))
                 Spacer(GlanceModifier.width(4.dp))
                 Text(countdown, maxLines = 1,
-                    style = TextStyle(color = ColorProvider(Gold), fontSize = 11.sp, fontWeight = FontWeight.Bold))
+                    style = TextStyle(color = ColorProvider(Gold), fontSize = timerSize.sp, fontWeight = FontWeight.Bold))
             }
         }
     }
@@ -447,7 +429,7 @@ private fun CompactUpgradeRow(job: VillageJob, now: Long, rowWidth: Int) {
 @androidx.compose.runtime.Composable
 private fun GoblinBadge() {
     Row(
-        GlanceModifier.background(Panel).cornerRadius(6.dp).padding(horizontal = 4.dp, vertical = 1.dp)
+        GlanceModifier.background(Frame).cornerRadius(6.dp).padding(horizontal = 4.dp, vertical = 1.dp)
     ) {
         Text("GOBLIN", maxLines = 1,
             style = TextStyle(color = ColorProvider(Cream), fontSize = 8.sp, fontWeight = FontWeight.Bold))
@@ -455,53 +437,50 @@ private fun GoblinBadge() {
 }
 
 /**
- * Bottom status area of the reference design: quick chips on the left (next active upgrade,
- * export age / staleness) and the last successful API sync time — or the offline/failure
- * state — on the right. All labels are budgeted against the measured widget width.
+ * Bottom status: the visible/hidden upgrade count and the age of the imported export.
  */
 @androidx.compose.runtime.Composable
 private fun BottomStatus(
-    topJob: VillageJob?,
     exportedAt: Long,
     now: Long,
     statusText: String,
-    statusColor: Color,
     contentWidth: Int,
+    compact: Boolean,
 ) {
-    val exportAge = if (exportedAt > 0L) ExportStatus.age(now, exportedAt) else ""
+    val exportAge = ExportStatus.age(now, exportedAt)
     val stale = exportedAt > 0L && now - exportedAt > 24 * 60 * 60 * 1000L
-    val exportChip = when {
-        exportAge.isEmpty() -> null
-        stale -> "STALE · exported $exportAge"
-        else -> "exported $exportAge"
+    val exportLabel = when {
+        exportAge.isEmpty() -> "Export time unknown"
+        stale -> "Export stale · $exportAge"
+        else -> "Exported $exportAge"
     }
-    // Fixed children are measured before the weighted spacer, so the active chip absorbs the
-    // remainder of the budget: status + export chip + gaps are subtracted first.
-    val statusChars = statusText.length + 2
-    val exportChars = (exportChip?.length ?: 0) + 4
-    val jobChipBudget = WidgetFit.maxChars(contentWidth, 10) - statusChars - exportChars - 8
-    val jobChip = topJob?.let {
-        WidgetFit.ellipsize("⟳ ${it.name} · ${it.countdown(now)}", jobChipBudget)
+    if (compact) {
+        val line = "$statusText · $exportLabel"
+        Row(
+            GlanceModifier.fillMaxWidth().height(COMPACT_FOOTER_DP.dp),
+            verticalAlignment = Alignment.Vertical.CenterVertically,
+        ) {
+            Text(
+                WidgetFit.ellipsize(line, WidgetFit.maxChars(contentWidth - 8, 9)),
+                maxLines = 1,
+                modifier = GlanceModifier.fillMaxWidth().padding(horizontal = 4.dp),
+                style = TextStyle(color = ColorProvider(if (stale) Alert else Muted), fontSize = 9.sp, fontWeight = FontWeight.Bold),
+            )
+        }
+        return
     }
+    val rightBudget = minOf(contentWidth / 2, 110)
+    val leftBudget = WidgetFit.maxChars(contentWidth - rightBudget - 8, 10)
     Row(
-        GlanceModifier.fillMaxWidth().height(24.dp),
+        GlanceModifier.fillMaxWidth().height(STANDARD_FOOTER_DP.dp),
         verticalAlignment = Alignment.Vertical.CenterVertically
     ) {
-        val chipText = jobChip ?: "NO ACTIVE UPGRADES"
-        Row(GlanceModifier.background(Frame).cornerRadius(9.dp).padding(horizontal = 7.dp, vertical = 3.dp)) {
-            Text(chipText, maxLines = 1,
-                style = TextStyle(color = ColorProvider(if (jobChip == null) Muted else Gold), fontSize = 10.sp))
-        }
-        if (exportChip != null) {
-            Spacer(GlanceModifier.width(5.dp))
-            Row(GlanceModifier.background(Frame).cornerRadius(9.dp).padding(horizontal = 7.dp, vertical = 3.dp)) {
-                Text(WidgetFit.ellipsize(exportChip, exportChars), maxLines = 1,
-                    style = TextStyle(color = ColorProvider(if (stale) Alert else Cream), fontSize = 10.sp))
-            }
-        }
-        Spacer(GlanceModifier.defaultWeight())
-        Text(WidgetFit.ellipsize(statusText, statusChars), maxLines = 1,
-            style = TextStyle(color = ColorProvider(statusColor), fontSize = 10.sp, fontWeight = FontWeight.Bold))
+        Text(WidgetFit.ellipsize(statusText, leftBudget), maxLines = 1,
+            modifier = GlanceModifier.defaultWeight(),
+            style = TextStyle(color = ColorProvider(if (statusText.endsWith("in app")) Alert else Cream), fontSize = 10.sp, fontWeight = FontWeight.Bold))
+        Spacer(GlanceModifier.width(6.dp))
+        Text(WidgetFit.ellipsize(exportLabel, WidgetFit.maxChars(rightBudget, 9)), maxLines = 1,
+            style = TextStyle(color = ColorProvider(if (stale) Alert else Muted), fontSize = 9.sp))
     }
 }
 

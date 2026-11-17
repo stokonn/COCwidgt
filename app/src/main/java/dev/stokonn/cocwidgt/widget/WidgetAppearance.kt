@@ -5,7 +5,7 @@ import android.content.SharedPreferences
 /**
  * Background transparency of the widget surface, 0–100 %.
  *
- * 0 % is the default: the fully opaque warm dark brown surface of the visual reference.
+ * 0 % is the default: the fully opaque warm brown surface of the supplied target design.
  * 100 % makes only the root background fully transparent so the launcher wallpaper shows
  * through. The value affects the root background alone — the header, the category chips,
  * the green progress rows, all text and all icons keep their own fully opaque colours, so
@@ -17,8 +17,8 @@ object WidgetAppearance {
     const val MIN_TRANSPARENCY = 0
     const val MAX_TRANSPARENCY = 100
 
-    /** Opaque warm dark brown surface of the reference design (ARGB base colour). */
-    private const val BASE_RGB = 0x00281D17
+    /** Opaque warm brown panel from the target widget design (ARGB base colour). */
+    private const val BASE_RGB = 0x00704F34
     private const val OPAQUE_ALPHA = 0xFF
 
     const val DEFAULT_TRANSPARENCY = MIN_TRANSPARENCY
@@ -27,7 +27,7 @@ object WidgetAppearance {
 
     /**
      * ARGB colour of the widget root background for the given transparency:
-     * 0 % → `0xFF281D17` (opaque warm brown), 100 % → `0x00281D17` (fully transparent),
+     * 0 % → `0xFF704F34` (opaque warm brown), 100 % → `0x00704F34` (fully transparent),
      * intermediate values scale the alpha channel only — the RGB identity never changes.
      */
     fun backgroundArgb(transparency: Int): Int {

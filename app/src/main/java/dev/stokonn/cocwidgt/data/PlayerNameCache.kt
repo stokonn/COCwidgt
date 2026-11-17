@@ -4,6 +4,7 @@ data class CachedPlayerName(val tag: String, val name: String, val fetchedAt: Lo
 
 /** Pure tag-bound cache codec: stale identity can never resolve for a different player. */
 object PlayerNameCache {
+    fun prefsName(tag: String) = "cocwidgt_player_name_${requireNotNull(PlayerIdentity.normalizeTag(tag)).removePrefix("#") }"
     fun encode(snapshot: PlayerSnapshot): Map<String, Any> {
         val tag = PlayerIdentity.normalizeTag(snapshot.tag)
             ?: throw IllegalArgumentException("Cannot cache a name without a valid Player Tag.")

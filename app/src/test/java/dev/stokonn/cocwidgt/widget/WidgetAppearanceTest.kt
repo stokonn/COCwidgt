@@ -16,19 +16,19 @@ class WidgetAppearanceTest {
 
     @Test
     fun `zero transparency is the opaque warm brown of the reference design`() {
-        assertEquals(0xFF281D17.toInt(), WidgetAppearance.backgroundArgb(0))
+        assertEquals(0xFF704F34.toInt(), WidgetAppearance.backgroundArgb(0))
     }
 
     @Test
     fun `hundred transparency is a fully transparent root background`() {
-        assertEquals(0x00281D17, WidgetAppearance.backgroundArgb(100))
+        assertEquals(0x00704F34, WidgetAppearance.backgroundArgb(100))
     }
 
     @Test
     fun `half transparency halves the alpha only and keeps the brown rgb identity`() {
         val half = WidgetAppearance.backgroundArgb(50)
         assertEquals(128, half ushr 24)
-        assertEquals(0x00281D17, half and 0x00FFFFFF)
+        assertEquals(0x00704F34, half and 0x00FFFFFF)
     }
 
     @Test
@@ -43,9 +43,9 @@ class WidgetAppearanceTest {
     fun `transparency never touches the rgb components used for text and bars`() {
         for (t in listOf(0, 1, 25, 50, 75, 100)) {
             val argb = WidgetAppearance.backgroundArgb(t)
-            assertEquals(0x28, (argb shr 16) and 0xFF)
-            assertEquals(0x1D, (argb shr 8) and 0xFF)
-            assertEquals(0x17, argb and 0xFF)
+            assertEquals(0x70, (argb shr 16) and 0xFF)
+            assertEquals(0x4F, (argb shr 8) and 0xFF)
+            assertEquals(0x34, argb and 0xFF)
         }
     }
 
