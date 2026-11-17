@@ -46,6 +46,13 @@ class GameArtworkTest {
         )
     }
 
+    @Test fun `town hall 19 resolves to exact upstream artwork`() {
+        assertEquals(
+            R.drawable.coc_buildings_home_village_town_hall_level_19,
+            GameArtwork.drawableResId(townHall, level = 19),
+        )
+    }
+
     @Test
     fun `every bundled level of every entity resolves to that exact level`() {
         for ((dataId, levels) in GameArtworkLevels.levelArtwork) {

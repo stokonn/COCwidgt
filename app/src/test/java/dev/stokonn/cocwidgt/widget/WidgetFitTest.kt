@@ -38,6 +38,15 @@ class WidgetFitTest {
     }
 
     @Test
+    fun countdownUsesTargetClockFormatAndRoundsUpRemainingSeconds() {
+        assertEquals("Ready", WidgetFit.countdown(0))
+        assertEquals("Ready", WidgetFit.countdown(-1))
+        assertEquals("00:00:01", WidgetFit.countdown(1))
+        assertEquals("01:00:01", WidgetFit.countdown(3_601_000))
+        assertEquals("1d 00:00:05", WidgetFit.countdown(86_405_000))
+    }
+
+    @Test
     fun categoryLabelsShortenOnlyInVeryNarrowWidgets() {
         assertEquals("Buildings", WidgetFit.categoryLabel(UpgradeCategory.BUILDINGS, 200))
         assertEquals("Buildings", WidgetFit.categoryLabel(UpgradeCategory.BUILDINGS, 170))

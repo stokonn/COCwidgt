@@ -54,7 +54,7 @@ class WidgetContentPlannerTest {
     @Test fun maximumViewportUsesAvailableHeightAndTracksRemainingRows() {
         val selection = WidgetContentPlanner.select(sampleJobs(30), 900, 1_200, now)
         assertTrue(selection.items.size > WidgetContentPlanner.select(sampleJobs(30), 480, 360, now).items.size)
-        assertEquals(WidgetSection.entries.toSet(), selection.groups.map { it.section }.toSet())
+        assertEquals(setOf(WidgetSection.BUILDERS, WidgetSection.LAB, WidgetSection.PETS), selection.groups.map { it.section }.toSet())
         assertEquals(selection.items.size, selection.groups.sumOf { it.items.size })
         assertEquals(30, selection.items.size + selection.hiddenCount)
     }
@@ -83,7 +83,54 @@ class WidgetContentPlannerTest {
         }
     }
 
-    @Test fun compactOnlySwitchesTypographyNeverContent() {
+    @Test fun listViewportReservesHeaderGapsAndBottomStatusAtEverySize() {
+        assertEquals(110 - 16 - 28 - 3 - 3 - 20, WidgetContentPlanner.listHeight(110, true))
+        assertEquals(360 - 20 - 32 - 5 - 24, WidgetContentPlanner.listHeight(360, false))
+        assertEquals(0, WidgetContentPlanner.listHeight(1, true))
+        assertEquals(40, WidgetContentPlanner.listHeight(110, true))
+        assertEquals(80, WidgetContentPlanner.listHeight(150, true))
+    }
+
+    @Test fun fewUpgradesExpandToUseTheAvailableListHeight() {
+        val jobs = sampleJobs(2)
+        val selection = WidgetContentPlanner.select(jobs, 480, 600, now)
+        val listHeight = WidgetContentPlanner.listHeight(600, false)
+
+        assertEquals(jobs.size, selection.items.size)
+        assertTrue(selection.showSectionHeadings)
+        assertEquals((listHeight - 18) / jobs.size, selection.rowHeightDp)
+        assertTrue(selection.rowHeightDp > 36)
+        assertTrue(selection.rowHeightDp * selection.items.size + 18 <= listHeight)
+    }
+
+    @Test fun manyUpgradesKeepTheMinimumRowSizeAndFitBeforeTheFooter() {
+        val selection = WidgetContentPlanner.select(sampleJobs(60), 360, 344, now)
+        val listHeight = WidgetContentPlanner.listHeight(344, false)
+        val headingHeight = selection.groups.size * 18
+
+        assertTrue(selection.hiddenCount > 0)
+        assertTrue(selection.rowHeightDp >= 36)
+        assertTrue(selection.rowHeightDp * selection.items.size + headingHeight <= listHeight)
+    }
+
+    @Test fun portraitWidgetViewportFitsFourteenTypicalActiveUpgrades() {
+        val selection = WidgetContentPlanner.select(sampleJobs(14), 430, 738, now)
+
+        assertEquals(14, selection.items.size)
+        assertEquals(0, selection.hiddenCount)
+        assertTrue(selection.rowHeightDp >= 36)
+    }
+
+    @Test fun smallestResizeSizeKeepsOneRowAndFooterByOmittingItsHeading() {
+        val selection = WidgetContentPlanner.select(sampleJobs(5), 180, 110, now)
+
+        assertEquals(1, selection.items.size)
+        assertEquals(4, selection.hiddenCount)
+        assertFalse(selection.showSectionHeadings)
+        assertEquals(40, selection.rowHeightDp)
+    }
+
+    @Test fun compactModeUsesTighterRowsAndRespondsToEitherDimension() {
         val jobs = sampleJobs(12)
         val compact = WidgetContentPlanner.select(jobs, 250, 180, now)
         val regular = WidgetContentPlanner.select(jobs, 480, 600, now)
@@ -97,15 +144,15 @@ class WidgetContentPlannerTest {
 
     @Test fun referenceSectionsGroupAllCanonicalCategoriesWithoutDroppingRows() {
         val selection = WidgetContentPlanner.select(sampleJobs(7), 480, 600, now)
-        assertEquals(listOf(WidgetSection.BUILDERS, WidgetSection.LAB_PETS), selection.groups.map { it.section })
+        assertEquals(listOf(WidgetSection.BUILDERS, WidgetSection.LAB, WidgetSection.PETS), selection.groups.map { it.section })
         assertEquals(7, selection.items.size + selection.hiddenCount)
         assertTrue(selection.groups.first().items.any { it.category == UpgradeCategory.BUILDINGS })
         assertTrue(selection.groups.first().items.any { it.category == UpgradeCategory.HEROES })
         assertTrue(selection.groups.first().items.any { it.category == UpgradeCategory.GOBLIN })
         assertTrue(selection.groups.first().items.any { it.category == UpgradeCategory.OTHER })
-        assertTrue(selection.groups.last().items.any { it.category == UpgradeCategory.TROOPS })
-        assertTrue(selection.groups.last().items.any { it.category == UpgradeCategory.PETS })
-        assertTrue(selection.groups.last().items.any { it.category == UpgradeCategory.LABORATORY })
+        assertTrue(selection.groups[1].items.any { it.category == UpgradeCategory.TROOPS })
+        assertTrue(selection.groups[1].items.any { it.category == UpgradeCategory.LABORATORY })
+        assertTrue(selection.groups[2].items.any { it.category == UpgradeCategory.PETS })
     }
 
     @Test fun goblinRowsStayInTheirDesignSectionAndRetainGoblinFlags() {
@@ -122,15 +169,25 @@ class WidgetContentPlannerTest {
         assertEquals(listOf(WidgetSection.BUILDERS), selection.groups.map { it.section })
     }
 
-    @Test fun labAndPetResearchShareTheSecondDesignSection() {
+    @Test fun laboratoryAndPetsUseDistinctDesignSections() {
         val jobs = listOf(
             job(0, 4000000L, section = "Laboratory"),
             job(1, 26000002L, section = "Laboratory"),
             job(2, 4000031L, section = "Star Laboratory"),
+            job(3, 73000000L, section = "Pets"),
         )
         val selection = WidgetContentPlanner.select(jobs, 480, 600, now)
-        val labAndPets = selection.groups.single { it.section == WidgetSection.LAB_PETS }
-        assertEquals(listOf(4000031L, 4000000L, 26000002L), labAndPets.items.map { it.dataId })
+        assertEquals(listOf(WidgetSection.LAB, WidgetSection.PETS), selection.groups.map { it.section })
+        assertEquals(listOf(4000031L, 4000000L, 26000002L), selection.groups[0].items.map { it.dataId })
+        assertEquals(listOf(73000000L), selection.groups[1].items.map { it.dataId })
+    }
+
+    @Test fun guardianResearchGetsItsOwnGroupWithoutChangingOtherRows() {
+        val jobs = listOf(job(0, 107000001L, section = "Guardians"), job(1, 26000000L, section = "Laboratory"))
+        val selection = WidgetContentPlanner.select(jobs, 480, 600, now)
+        assertEquals(listOf(WidgetSection.LAB, WidgetSection.GUARDIANS), selection.groups.map { it.section })
+        assertEquals(107000001L, selection.groups.last().items.single().dataId)
+        assertEquals(2, selection.items.size + selection.hiddenCount)
     }
 
     @Test fun completedUpgradesAreExcludedInsteadOfRendered() {

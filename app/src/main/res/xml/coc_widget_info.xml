@@ -8,6 +8,7 @@
     android:targetCellWidth="4"
     android:targetCellHeight="3"
     android:initialLayout="@layout/coc_widget_loading"
+    android:configure="dev.stokonn.cocwidgt.widget.WidgetConfigurationActivity"
     android:updatePeriodMillis="1800000"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"

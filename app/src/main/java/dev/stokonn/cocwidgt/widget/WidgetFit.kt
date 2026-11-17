@@ -39,6 +39,22 @@ object WidgetFit {
         else -> text.take(maxChars - 1).trimEnd() + ELLIPSIS
     }
 
+    /** Countdown style used by the reference cards, derived only from the real remaining time. */
+    fun countdown(remainingMs: Long): String {
+        if (remainingMs <= 0L) return "Ready"
+        val seconds = remainingMs / 1_000L + if (remainingMs % 1_000L == 0L) 0L else 1L
+        val days = seconds / 86_400L
+        val hours = seconds / 3_600L % 24L
+        val minutes = seconds / 60L % 60L
+        val remainder = seconds % 60L
+        return buildString {
+            if (days > 0) append(days).append('d').append(' ')
+            append(hours.toString().padStart(2, '0')).append(':')
+                .append(minutes.toString().padStart(2, '0')).append(':')
+                .append(remainder.toString().padStart(2, '0'))
+        }
+    }
+
     /** Category heading: short form in very narrow widgets so heading + count always fit. */
     fun categoryLabel(category: UpgradeCategory, widthDp: Int): String =
         if (widthDp < NARROW_COLUMN_DP) category.shortLabel else category.label

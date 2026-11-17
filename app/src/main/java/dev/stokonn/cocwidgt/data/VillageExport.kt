@@ -60,6 +60,13 @@ data class VillageJob(
 }
 
 data class VillageSnapshot(val tag: String, val name: String, val townHall: Int, val builders: Int, val exportedAt: Long, val jobs: List<VillageJob>) {
+    val unsupportedDataIds: List<Long>
+        get() = jobs.asSequence().map { it.dataId }.filter { GameCatalogue.find(it) == null }.distinct().toList()
+    val jobsAboveCatalogueMax: List<VillageJob>
+        get() = jobs.filter { job -> GameCatalogue.maxLevel(job.dataId)?.let { job.level > it } == true }
+    val jobsForNonUpgradeableEntities: List<VillageJob>
+        get() = jobs.filter { GameCatalogue.find(it.dataId)?.upgradeable == false }
+
     fun save(context: Context) {
         val array = JSONArray()
         jobs.forEach { job -> array.put(JSONObject().apply {
@@ -70,7 +77,7 @@ data class VillageSnapshot(val tag: String, val name: String, val townHall: Int,
             put("cnt", job.count); put("currentLevel", job.currentLevel)
         }) }
         val normalizedTag = requireNotNull(PlayerIdentity.normalizeTag(tag)) { "Cannot save a village without a valid Player Tag." }
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("tag", normalizedTag).putString("name", name.trim())
+        context.getSharedPreferences(prefsName(normalizedTag), Context.MODE_PRIVATE).edit().putString("tag", normalizedTag).putString("name", name.trim())
             .putInt("townHall", townHall).putInt("builders", builders).putLong("exportedAt", exportedAt)
             .putString("jobs", array.toString()).apply()
     }
@@ -105,11 +112,14 @@ data class VillageSnapshot(val tag: String, val name: String, val townHall: Int,
 
     companion object {
         const val PREFS = "cocwidgt_village"
+        fun prefsName(tag: String) = "${PREFS}_${requireNotNull(PlayerIdentity.normalizeTag(tag)).removePrefix("#") }"
         private const val TIMER_MATCH_TOLERANCE_MS = 15 * 60 * 1000L
 
-        fun load(context: Context): VillageSnapshot? {
-            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        fun load(context: Context, accountTag: String? = null): VillageSnapshot? {
+            val account = PlayerIdentity.normalizeTag(accountTag)
+            val prefs = context.getSharedPreferences(account?.let(::prefsName) ?: PREFS, Context.MODE_PRIVATE)
             val tag = PlayerIdentity.normalizeTag(prefs.getString("tag", null)) ?: return null
+            if (account != null && tag != account) return null
             val array = runCatching { JSONArray(prefs.getString("jobs", "[]")) }.getOrNull() ?: JSONArray()
             val jobs = (0 until array.length()).mapNotNull { i -> runCatching {
                 val j = array.getJSONObject(i)
@@ -148,7 +158,8 @@ object VillageExportParser {
 
     fun parse(raw: String): VillageSnapshot {
         require(raw.length <= 1_000_000) { "Export is too large (maximum 1 MB)." }
-        val root = runCatching { JSONObject(raw.trim()) }.getOrElse { throw IllegalArgumentException("This is not valid village export JSON.") }
+        val json = raw.trim().removePrefix("\uFEFF").trimStart()
+        val root = runCatching { JSONObject(json) }.getOrElse { throw IllegalArgumentException("This is not valid village export JSON.") }
         val tag = PlayerIdentity.normalizeTag(root.optString("tag"))
         require(tag != null) { "Export is missing a valid Player Tag." }
         require(root.has("timestamp")) { "Export is missing its creation timestamp." }

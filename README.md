@@ -2,7 +2,7 @@
 
 **COCwidgt** is an unofficial Android home-screen widget for tracking Clash of Clans village upgrades. It turns a locally exported village snapshot into a compact, resizable overview of active upgrades, levels and countdowns.
 
-- **Current development version:** 0.5.1 (version code 6)
+- **Current development version:** 0.6.0 (version code 7)
 - **Android:** 10 (API 29) or newer
 - **Package:** `dev.stokonn.cocwidgt`
 - **Project status:** prerelease development
@@ -12,13 +12,14 @@ COCwidgt is a fan-made project. It is not affiliated with, endorsed by or sponso
 
 ## Features
 
-- **Resizable home-screen widget** built with Jetpack Glance. The layout responds to the dimensions reported by the launcher and shows more upgrade rows when more space is available.
+- **Resizable home-screen widget** built with Jetpack Glance. The layout responds to the dimensions reported by the launcher and the active upgrade count, fitting more rows when more space is available.
 - **Village overview** with player tag, Town Hall, categories, game artwork, levels, countdowns and progress indicators.
 - **Upgrade tracking** for supported Home Village and Builder Base buildings, heroes, troops, spells, pets, equipment, laboratory and helper-related activities.
 - **Local JSON import.** Village data and upgrade timers come from the Clash of Clans Data Export; the app does not need an API connection to import or display that data.
 - **Optional player-name lookup.** When an export does not contain a player name, the official Clash of Clans API can resolve the name from the Player Tag. A manually entered name can be used instead.
 - **Automatic widget refresh.** WorkManager periodically refreshes the widget so countdowns and progress indicators continue to advance between app launches.
 - **Explicit handling of unknown items.** Export entries without a supported catalogue mapping are shown as unknown game items instead of silently disappearing.
+- **Town Hall 19 support.** The catalogue includes all TH19-updated building, defense, trap, troop, spell, hero, pet, and Guardian levels, plus Squad troops and the Town Hall 19 structures and variants.
 
 ## Getting started
 
@@ -83,6 +84,12 @@ Important distinctions:
 
 You do not need to configure an API key to use the core import and widget features.
 
+## Multiple accounts
+
+Add accounts with their Player Tags from the Accounts card in the app. Adding an account fetches its public profile using the optional Developer API key. Each account's village export and cached profile are stored separately; an existing single account is migrated automatically on first launch. Account names are local labels.
+
+Each newly placed widget asks which saved account it should show. Existing widgets keep their saved account when the active account changes. If that account is removed, the widget displays the active account instead. Widget refreshes follow Android's scheduled update limits.
+
 ## Data and privacy
 
 - Village JSON is parsed and stored locally on your device.
@@ -92,9 +99,9 @@ You do not need to configure an API key to use the core import and widget featur
 
 ## Catalogue and artwork
 
-The game catalogue maps supported export IDs to known English names, categories and artwork resources. It is a maintained subset rather than a claim that every current or future game entity is supported.
+The game catalogue maps supported export IDs to known English names, categories, upgradeability and artwork resources. TH19 metadata and artwork were checked against [ClashKingAssets commit `6212dddb`](https://github.com/ClashKingInc/ClashKingAssets/commit/6212dddb13ec5a0f13b5314361e49fc4a4325a61); current upstream `main` was `fa40345986d5c862480e6fa34aa5100ab8eee345` and contains no newer TH19 entity-level metadata changes in the audited static data. Guardian Shrine is recognized as non-upgradeable; Guardian upgrades are tracked in their own group. Imports report unsupported IDs, levels over the verified cap, and timed rows for non-upgradeable IDs while preserving the rows.
 
-Selected building, defence, trap, troop, siege, hero, pet and spell artwork is bundled from the ClashKingAssets community project. Unknown entities, and known entities without a matching bundled asset, use a neutral fallback rather than guessed artwork or names.
+TH19 building and trap level images, Town Hall 19 and its three hall variants, the new structure images, Heroic Spell, TH19 Squad troop portraits, upgraded troop/hero portraits, and all three Guardian portraits are bundled from the ClashKingAssets community project. Guardian Shrine has no standalone building image in that upstream commit and is not an upgrade row. Unknown entities, and known entities without a matching bundled asset, use a neutral fallback rather than guessed artwork or names.
 
 See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for source mapping, artwork attribution and licensing information. The relevant GPL-3.0 license text is included in [LICENSES/GPL-3.0-ClashKingAssets.txt](LICENSES/GPL-3.0-ClashKingAssets.txt).
 
@@ -135,14 +142,14 @@ Keep the keystore and passwords out of source control and build logs. A release 
 
 The Android CI workflow runs unit tests, lint and a debug build for pull requests and pushes to `main`.
 
-The v0.5.1 signed prerelease workflow is triggered by the `v0.5.1` tag. It requires these GitHub Actions repository secrets:
+The version-specific signed prerelease workflows use GitHub Actions repository secrets:
 
 - `RELEASE_KEYSTORE_BASE64` — base64-encoded Android release keystore
 - `RELEASE_STORE_PASSWORD` — keystore password
 - `RELEASE_KEY_ALIAS` — signing key alias
 - `RELEASE_KEY_PASSWORD` — signing key password
 
-The workflow builds and verifies the signed APK, checks the package name and version metadata, then publishes the APK as `cocw0.5.1.apk` together with a SHA-256 checksum file. The release is marked as a **GitHub prerelease**, not a stable release.
+The v0.6.0 workflow builds and verifies the signed APK, checks its package name, version metadata and original signing certificate, then publishes `cocw0.6.0.apk` with a SHA-256 checksum file. The release is marked as a **GitHub prerelease**, not a stable release.
 
 ## Known limitations
 

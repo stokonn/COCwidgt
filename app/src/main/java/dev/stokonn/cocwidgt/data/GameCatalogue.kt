@@ -2,13 +2,39 @@ package dev.stokonn.cocwidgt.data
 
 
 /** Stable IDs and English names observed in the public village export schema. Unknown IDs stay explicit. */
-enum class GameCategory { BUILDING, DEFENCE, HERO, TROOP, SPELL, PET, TRAP, SIEGE, HELPER, UNKNOWN }
+enum class GameCategory { BUILDING, BUILDING_VARIANT, DEFENCE, HERO, TROOP, SPELL, PET, GUARDIAN, TRAP, SIEGE, HELPER, UNKNOWN }
 
-data class GameEntity(val id: Long, val name: String, val category: GameCategory) {
+data class GameEntity(val id: Long, val name: String, val category: GameCategory, val upgradeable: Boolean = true) {
     val iconKey: String get() = category.name.lowercase()
 }
 
 object GameCatalogue {
+    /** TH19 maximum levels verified against ClashKingAssets static data at 6212dddb. */
+    val verifiedTownHall19MaxLevels = mapOf(
+        1000001L to 19, 1000002L to 18, 1000003L to 20, 1000004L to 18, 1000005L to 20,
+        1000007L to 17, 1000010L to 20, 1000012L to 17, 1000014L to 15, 1000015L to 9,
+        1000019L to 18, 1000020L to 10, 1000021L to 14, 1000023L to 12, 1000024L to 14,
+        1000070L to 10, 1000071L to 13, 1000079L to 4, 1000084L to 5, 1000085L to 5,
+        1000106L to 12, 1000107L to 2, 1000108L to 2,
+        12000001L to 14, 12000005L to 14, 12000008L to 6,
+        26000000L to 14, 26000001L to 13, 26000009L to 13, 26000011L to 8,
+        26000028L to 9, 26000120L to 5, 26000153L to 4,
+        4000000L to 14, 4000001L to 15, 4000002L to 11, 4000003L to 15, 4000004L to 15,
+        4000005L to 14, 4000006L to 15, 4000007L to 12, 4000008L to 14, 4000009L to 14,
+        4000010L to 15, 4000011L to 16, 4000012L to 13, 4000013L to 16, 4000015L to 9,
+        4000017L to 9, 4000022L to 11, 4000023L to 13, 4000024L to 13, 4000053L to 9,
+        4000056L to 13, 4000059L to 10, 4000063L to 13, 4000064L to 13, 4000065L to 7,
+        4000066L to 9, 4000076L to 9, 4000080L to 11, 4000082L to 5, 4000091L to 6,
+        4000095L to 6, 4000109L to 5, 4000110L to 5, 4000123L to 7, 4000132L to 5,
+        4000147L to 9, 4000177L to 4,
+        4000195L to 3, 4000196L to 3, 4000197L to 3, 4000198L to 3, 4000199L to 3,
+        4000200L to 3, 4000201L to 3, 4000202L to 3, 4000203L to 3, 4000204L to 3,
+        4000205L to 3, 4000206L to 3,
+        28000000L to 115, 28000001L to 115, 28000002L to 90, 28000004L to 60,
+        28000006L to 100, 28000007L to 30, 73000011L to 15,
+        107000000L to 5, 107000001L to 10, 107000008L to 5,
+    )
+
     private val entries = listOf(
         GameEntity(1000000, "Army Camp", GameCategory.BUILDING), GameEntity(1000001, "Town Hall", GameCategory.BUILDING),
         GameEntity(1000002, "Elixir Collector", GameCategory.BUILDING), GameEntity(1000003, "Elixir Storage", GameCategory.BUILDING),
@@ -17,7 +43,7 @@ object GameCatalogue {
         GameEntity(1000008, "Cannon", GameCategory.DEFENCE), GameEntity(1000009, "Archer Tower", GameCategory.DEFENCE),
         GameEntity(1000010, "Wall", GameCategory.BUILDING), GameEntity(1000011, "Wizard Tower", GameCategory.DEFENCE),
         GameEntity(1000012, "Air Defense", GameCategory.DEFENCE), GameEntity(1000013, "Mortar", GameCategory.DEFENCE),
-        GameEntity(1000014, "Clan Castle", GameCategory.BUILDING), GameEntity(1000015, "Builder's Hut", GameCategory.BUILDING),
+        GameEntity(1000014, "Clan Castle", GameCategory.BUILDING), GameEntity(1000015, "Builder's Hut", GameCategory.DEFENCE),
         GameEntity(1000019, "Hidden Tesla", GameCategory.DEFENCE), GameEntity(1000020, "Spell Factory", GameCategory.BUILDING),
         GameEntity(1000021, "X-Bow", GameCategory.DEFENCE), GameEntity(1000023, "Dark Elixir Drill", GameCategory.BUILDING),
         GameEntity(1000024, "Dark Elixir Storage", GameCategory.BUILDING), GameEntity(1000026, "Dark Barracks", GameCategory.BUILDING),
@@ -31,6 +57,12 @@ object GameCatalogue {
         GameEntity(1000085, "Ricochet Cannon", GameCategory.DEFENCE), GameEntity(1000086, "Revenge Tower", GameCategory.DEFENCE),
         GameEntity(1000089, "Firespitter", GameCategory.DEFENCE), GameEntity(1000093, "Helper Hut", GameCategory.BUILDING),
         GameEntity(1000097, "Crafting Station", GameCategory.BUILDING), GameEntity(1000102, "Super Wizard Tower", GameCategory.DEFENCE),
+        GameEntity(1000105, "Guardian Shrine", GameCategory.BUILDING, upgradeable = false),
+        GameEntity(1000106, "Squad Barracks", GameCategory.BUILDING),
+        GameEntity(1000107, "Spiky Tower", GameCategory.DEFENCE), GameEntity(1000108, "Firecracker Tower", GameCategory.DEFENCE),
+        GameEntity(119000000, "Wizard Hall", GameCategory.BUILDING_VARIANT, upgradeable = false),
+        GameEntity(119000001, "Archer Hall", GameCategory.BUILDING_VARIANT, upgradeable = false),
+        GameEntity(119000002, "Barbarian Hall", GameCategory.BUILDING_VARIANT, upgradeable = false),
         GameEntity(1000033, "Wall", GameCategory.BUILDING), GameEntity(1000034, "Builder Hall", GameCategory.BUILDING),
         GameEntity(1000035, "Elixir Collector", GameCategory.BUILDING), GameEntity(1000036, "Elixir Storage", GameCategory.BUILDING),
         GameEntity(1000037, "Gold Mine", GameCategory.BUILDING), GameEntity(1000038, "Gold Storage", GameCategory.BUILDING),
@@ -74,10 +106,19 @@ object GameCatalogue {
         GameEntity(4000082, "Headhunter", GameCategory.TROOP), GameEntity(4000087, "Log Launcher", GameCategory.SIEGE),
         GameEntity(4000091, "Flame Flinger", GameCategory.SIEGE), GameEntity(4000092, "Battle Drill", GameCategory.SIEGE),
         GameEntity(4000095, "Electro Titan", GameCategory.TROOP), GameEntity(4000097, "Apprentice Warden", GameCategory.TROOP),
+        GameEntity(4000056, "Super Miner", GameCategory.TROOP), GameEntity(4000063, "Inferno Dragon", GameCategory.TROOP),
+        GameEntity(4000064, "Super Valkyrie", GameCategory.TROOP), GameEntity(4000066, "Super Witch", GameCategory.TROOP),
+        GameEntity(4000076, "Ice Hound", GameCategory.TROOP), GameEntity(4000080, "Super Bowler", GameCategory.TROOP),
         GameEntity(4000109, "Ruin Witch", GameCategory.TROOP), GameEntity(4000110, "Root Rider", GameCategory.TROOP),
         GameEntity(4000123, "Druid", GameCategory.TROOP), GameEntity(4000132, "Thrower", GameCategory.TROOP),
         GameEntity(4000135, "Troop Launcher", GameCategory.TROOP), GameEntity(4000150, "Furnace", GameCategory.TROOP),
-        GameEntity(4000177, "Meteor Golem", GameCategory.TROOP), GameEntity(4000188, "Sky Wagon", GameCategory.TROOP),
+        GameEntity(4000147, "Super Yeti", GameCategory.TROOP), GameEntity(4000177, "Meteor Golem", GameCategory.TROOP), GameEntity(4000188, "Sky Wagon", GameCategory.TROOP),
+        GameEntity(4000195, "Barch Squad", GameCategory.TROOP), GameEntity(4000196, "Giant Wizard Squad", GameCategory.TROOP),
+        GameEntity(4000197, "Wall Breaker Squad", GameCategory.TROOP), GameEntity(4000198, "Minion Squad", GameCategory.TROOP),
+        GameEntity(4000199, "Balloon Squad", GameCategory.TROOP), GameEntity(4000200, "Golem Witch Squad", GameCategory.TROOP),
+        GameEntity(4000201, "Hog Rider Squad", GameCategory.TROOP), GameEntity(4000202, "Miner Squad", GameCategory.TROOP),
+        GameEntity(4000203, "Healer Squad", GameCategory.TROOP), GameEntity(4000204, "P.E.K.K.A Titan Squad", GameCategory.TROOP),
+        GameEntity(4000205, "Dragons Squad", GameCategory.TROOP), GameEntity(4000206, "Baby Dragon Squad", GameCategory.TROOP),
         GameEntity(4000031, "Raged Barbarian", GameCategory.TROOP), GameEntity(4000032, "Sneaky Archer", GameCategory.TROOP),
         GameEntity(4000033, "Beta Minion", GameCategory.TROOP), GameEntity(4000034, "Boxer Giant", GameCategory.TROOP),
         GameEntity(4000035, "Bomber", GameCategory.TROOP), GameEntity(4000036, "Power P.E.K.K.A", GameCategory.TROOP),
@@ -93,17 +134,21 @@ object GameCatalogue {
         GameEntity(26000053, "Recall Spell", GameCategory.SPELL), GameEntity(26000070, "Overgrowth Spell", GameCategory.SPELL),
         GameEntity(26000098, "Revive Spell", GameCategory.SPELL), GameEntity(26000109, "Ice Block Spell", GameCategory.SPELL),
         GameEntity(26000120, "Totem Spell", GameCategory.SPELL), GameEntity(26000123, "Angry Spell", GameCategory.SPELL),
+        GameEntity(26000153, "Heroic Spell", GameCategory.SPELL),
         GameEntity(73000000, "L.A.S.S.I", GameCategory.PET), GameEntity(73000001, "Mighty Yak", GameCategory.PET),
         GameEntity(73000002, "Electro Owl", GameCategory.PET), GameEntity(73000003, "Unicorn", GameCategory.PET),
         GameEntity(73000004, "Phoenix", GameCategory.PET), GameEntity(73000007, "Poison Lizard", GameCategory.PET),
         GameEntity(73000008, "Diggy", GameCategory.PET), GameEntity(73000009, "Frosty", GameCategory.PET),
         GameEntity(73000010, "Spirit Fox", GameCategory.PET), GameEntity(73000011, "Angry Jelly", GameCategory.PET),
         GameEntity(73000016, "Sneezy", GameCategory.PET), GameEntity(73000017, "Greedy Raven", GameCategory.PET),
+        GameEntity(107000000, "Longshot", GameCategory.GUARDIAN), GameEntity(107000001, "Smasher", GameCategory.GUARDIAN),
+        GameEntity(107000008, "Logger", GameCategory.GUARDIAN),
         GameEntity(93000000, "Builder's Apprentice", GameCategory.HELPER), GameEntity(93000001, "Lab Assistant", GameCategory.HELPER),
         GameEntity(93000002, "Prospector", GameCategory.HELPER)
     ).associateBy { it.id }
 
     fun find(id: Long): GameEntity? = entries[id]
     fun resolve(id: Long): GameEntity = find(id) ?: GameEntity(id, "Unknown game item (ID $id)", GameCategory.UNKNOWN)
+    fun maxLevel(id: Long): Int? = verifiedTownHall19MaxLevels[id]
 
 }

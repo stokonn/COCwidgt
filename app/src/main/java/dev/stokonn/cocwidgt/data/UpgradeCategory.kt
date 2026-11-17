@@ -24,6 +24,7 @@ enum class UpgradeCategory(val label: String, val shortLabel: String, val order:
     HEROES("Heroes", "Heroes", 20),
     TROOPS("Troops", "Troops", 30),
     PETS("Pets", "Pets", 40),
+    GUARDIANS("Guardians", "Guardians", 45),
     LABORATORY("Laboratory", "Lab", 50),
     GOBLIN("Goblin Workers", "Goblin", 60),
     OTHER("Other", "Other", 90),
@@ -56,10 +57,11 @@ enum class UpgradeCategory(val label: String, val shortLabel: String, val order:
                 else -> when (entityCategory) {
                     GameCategory.HERO -> HEROES
                     GameCategory.PET -> PETS
+                    GameCategory.GUARDIAN -> GUARDIANS
                     GameCategory.TROOP -> TROOPS
                     GameCategory.SPELL, GameCategory.SIEGE -> LABORATORY
                     GameCategory.HELPER -> GOBLIN
-                    GameCategory.BUILDING, GameCategory.DEFENCE, GameCategory.TRAP -> BUILDINGS
+                    GameCategory.BUILDING, GameCategory.BUILDING_VARIANT, GameCategory.DEFENCE, GameCategory.TRAP -> BUILDINGS
                     GameCategory.UNKNOWN -> OTHER
                 }
             }
