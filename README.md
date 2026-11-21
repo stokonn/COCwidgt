@@ -1,164 +1,158 @@
-# COCwidgt
+<div align="center">
 
-**COCwidgt** is an unofficial Android home-screen widget for tracking Clash of Clans village upgrades. It turns a locally exported village snapshot into a compact, resizable overview of active upgrades, levels and countdowns.
+<h1>COCwidgt</h1>
 
-- **Current development version:** 0.6.0 (version code 7)
-- **Android:** 10 (API 29) or newer
-- **Package:** `dev.stokonn.cocwidgt`
-- **Project status:** prerelease development
-- **Game:** Clash of Clans
+<p><strong>Your Clash of Clans village. Right on your home screen.</strong></p>
 
-COCwidgt is a fan-made project. It is not affiliated with, endorsed by or sponsored by Supercell.
+<p>An unofficial Android companion widget for tracking village upgrades from your own exported village data.</p>
 
-## Features
+<p>
+<a href="https://github.com/stokonn/COCwidgt/releases/tag/v0.6.0"><strong>COCwidgt 0.6.0 — latest prerelease</strong></a> ·
+<a href="docs/user-guide/GETTING-STARTED.md">Getting started</a> ·
+<a href="docs/README.md">Documentation</a>
+</p>
 
-- **Resizable home-screen widget** built with Jetpack Glance. The layout responds to the dimensions reported by the launcher and the active upgrade count, fitting more rows when more space is available.
-- **Village overview** with player tag, Town Hall, categories, game artwork, levels, countdowns and progress indicators.
-- **Upgrade tracking** for supported Home Village and Builder Base buildings, heroes, troops, spells, pets, equipment, laboratory and helper-related activities.
-- **Local JSON import.** Village data and upgrade timers come from the Clash of Clans Data Export; the app does not need an API connection to import or display that data.
-- **Optional player-name lookup.** When an export does not contain a player name, the official Clash of Clans API can resolve the name from the Player Tag. A manually entered name can be used instead.
-- **Automatic widget refresh.** WorkManager periodically refreshes the widget so countdowns and progress indicators continue to advance between app launches.
-- **Explicit handling of unknown items.** Export entries without a supported catalogue mapping are shown as unknown game items instead of silently disappearing.
-- **Town Hall 19 support.** The catalogue includes all TH19-updated building, defense, trap, troop, spell, hero, pet, and Guardian levels, plus Squad troops and the Town Hall 19 structures and variants.
+<p>
+<img alt="Android 10+" src="https://img.shields.io/badge/Android-10%2B-3DDC84?logo=android&logoColor=white" />
+<img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-Compose-7F52FF?logo=kotlin&logoColor=white" />
+<img alt="Widget" src="https://img.shields.io/badge/Home%20screen-Glance-64748b" />
+<img alt="Project status" src="https://img.shields.io/badge/Status-Prerelease-orange" />
+</p>
 
-## Getting started
+</div>
 
-### 1. Export your village
+---
 
-In Clash of Clans:
+## Your village, at a glance
 
-1. Open **Settings**.
-2. Open **More Settings → Data Export**.
-3. Choose **Copy** to copy the village JSON.
+COCwidgt turns a **Clash of Clans Data Export** into a compact, resizable Android home-screen widget. See active upgrades, levels and countdowns without opening the game.
 
-The exact labels can vary slightly between game versions.
+The app is built around a simple boundary: **you export your village, COCwidgt imports the snapshot, and your widget presents that locally stored data.** It is not a live game connection.
 
-### 2. Import into COCwidgt
+## What it does
 
-1. Open COCwidgt.
-2. Tap **Paste & import village JSON**.
-3. Allow clipboard access if Android asks.
-4. Check the imported Player Tag and import status.
+| 🏰 **Village overview** | ⏳ **Upgrade tracking** | 📱 **Adaptive widget** |
+| :--- | :--- | :--- |
+| Player identity, Town Hall, upgrade categories and game artwork. | Levels, remaining times and progress based on the first observed timer window. | Resizable home-screen widget that plans visible content around launcher-provided dimensions. |
 
-Import again after playing to update levels and upgrade timers. The export is a snapshot, not a live connection to the game.
+| 👥 **Multiple accounts** | 🔒 **Local-first data** | 🧩 **Catalogue diagnostics** |
+| :--- | :--- | :--- |
+| Keep villages separate and choose an account independently for each widget. | Village exports stay on-device; public profile lookup is optional. | Unsupported IDs and catalogue mismatches remain visible instead of being silently discarded. |
 
-### 3. Add the widget
+### More highlights
 
-1. Long-press an empty area of your Android home screen.
-2. Open the widget picker.
-3. Find **COCwidgt** and add the widget.
-4. Resize it using your launcher's widget handles.
+- **Manual JSON import** from the in-game Data Export feature.
+- **Optional public player lookup** through the official Clash of Clans API.
+- **Town Hall 19 catalogue support** for the verified entities and artwork included in the project.
+- **Scheduled widget refresh** through WorkManager, subject to Android background scheduling.
+- **Per-widget account selection** so different widgets can display different saved villages.
 
-The number of visible rows depends on the space the launcher gives the widget. Launcher implementations differ, so the final appearance can vary by device.
+## A look at the widget
 
-## How upgrade timers work
+COCwidgt's widget layout adapts to the size allocated by your launcher. The repository currently does not include a maintained set of release screenshots, so this section intentionally avoids mockups or unverified device captures.
 
-The village export provides the remaining seconds for an upgrade at the time the export was created. COCwidgt calculates the finish time from the export timestamp and that remaining duration.
+## Get COCwidgt
 
-The export does **not** provide the original total duration of every upgrade. As a result, the app does not invent a percentage based on guessed upgrade durations. Instead, a progress indicator uses the first moment COCwidgt observed that upgrade running and its calculated finish time.
+<blockquote>
+<strong>Latest published build: COCwidgt 0.6.0 (prerelease)</strong><br />
+<a href="https://github.com/stokonn/COCwidgt/releases/download/v0.6.0/cocw0.6.0.apk">Download cocw0.6.0.apk</a> ·
+<a href="https://github.com/stokonn/COCwidgt/releases/tag/v0.6.0">Release page and SHA-256 checksum</a>
+</blockquote>
 
-- Re-importing the same running upgrade preserves its first observed start, so progress does not jump backwards.
-- A changed timer or a different Player Tag starts a new observation window.
-- If an upgrade is first imported after it has already started, its true start is unknown; its progress indicator begins at the first import.
-- If timestamps are missing or invalid, no progress indicator is shown.
-- An old export can contain timers that have already elapsed; those upgrades are shown as ready.
+- **Android:** 10 or newer (API 29+).
+- **Package:** `dev.stokonn.cocwidgt`.
+- **Version:** 0.6.0 · version code 7.
+- **Status:** prerelease development, not a stable Play Store release.
 
-Countdowns and progress are based on the exported data. Import a fresh export to reflect changes made in the game.
+For installation and first import, follow the [Getting started guide](docs/user-guide/GETTING-STARTED.md).
 
-## Optional Developer API key
+## How it works
 
-The optional **Developer API key** is used only to look up the public player name through:
+1. **Export:** copy your village JSON using Clash of Clans **Settings → More Settings → Data Export**.
+2. **Import:** paste the JSON into COCwidgt. The app parses the snapshot and maps supported entity IDs through its maintained catalogue.
+3. **Organize:** manage saved accounts using their Player Tags. Existing single-account data is migrated on first launch.
+4. **Place:** add a COCwidgt home-screen widget and choose which saved account that widget should show.
+5. **Refresh:** WorkManager periodically asks Android to re-render the widget using locally stored data.
 
-`GET https://api.clashofclans.com/v1/players/{playerTag}`
+The export is a snapshot. Import again after gameplay to update levels and upgrade timers.
 
-The key is stored using Android Keystore-backed encryption and sent to the official API over HTTPS. Supercell API keys are restricted to allowed public IP addresses, so lookups can fail when your public IP changes or when you use a different network.
-
-Important distinctions:
-
-- The Developer API key is **not** the in-game Data Export ownership token.
-- COCwidgt does not collect or verify the ownership token.
-- The API is not used to obtain village levels, upgrades or timers.
-- Import and widget display continue to work when the API is unavailable.
-- A successfully resolved name is cached for its matching Player Tag. A cached name from another tag is not reused.
-- If no name is available, the app can show the Player Tag or a manually entered name.
-
-You do not need to configure an API key to use the core import and widget features.
-
-## Multiple accounts
-
-Add accounts with their Player Tags from the Accounts card in the app. Adding an account fetches its public profile using the optional Developer API key. Each account's village export and cached profile are stored separately; an existing single account is migrated automatically on first launch. Account names are local labels.
-
-Each newly placed widget asks which saved account it should show. Existing widgets keep their saved account when the active account changes. If that account is removed, the widget displays the active account instead. Widget refreshes follow Android's scheduled update limits.
-
-## Data and privacy
+## Privacy and API use
 
 - Village JSON is parsed and stored locally on your device.
-- Village export data is not sent to Supercell by COCwidgt.
-- The optional Developer API key is used for the player-profile name request described above.
-- The app does not use the API as a replacement for the village export.
+- COCwidgt does not upload village export data to Supercell.
+- The optional Developer API key is used only for a public player-profile lookup, such as resolving a player name.
+- The API lookup does not retrieve village levels, upgrades or timers.
+- The key is stored using Android Keystore-backed encrypted storage and sent over HTTPS.
+- Import and widget display continue to work without a configured API key.
 
-## Catalogue and artwork
+Read the [architecture overview](docs/architecture/OVERVIEW.md) for data-flow and security boundaries.
 
-The game catalogue maps supported export IDs to known English names, categories, upgradeability and artwork resources. TH19 metadata and artwork were checked against [ClashKingAssets commit `6212dddb`](https://github.com/ClashKingInc/ClashKingAssets/commit/6212dddb13ec5a0f13b5314361e49fc4a4325a61); current upstream `main` was `fa40345986d5c862480e6fa34aa5100ab8eee345` and contains no newer TH19 entity-level metadata changes in the audited static data. Guardian Shrine is recognized as non-upgradeable; Guardian upgrades are tracked in their own group. Imports report unsupported IDs, levels over the verified cap, and timed rows for non-upgradeable IDs while preserving the rows.
+## Honest timing and progress
 
-TH19 building and trap level images, Town Hall 19 and its three hall variants, the new structure images, Heroic Spell, TH19 Squad troop portraits, upgraded troop/hero portraits, and all three Guardian portraits are bundled from the ClashKingAssets community project. Guardian Shrine has no standalone building image in that upstream commit and is not an upgrade row. Unknown entities, and known entities without a matching bundled asset, use a neutral fallback rather than guessed artwork or names.
+The export provides remaining seconds at the time of export, not the original total duration of every upgrade. COCwidgt calculates an expected finish time from the export timestamp and remaining duration.
 
-See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for source mapping, artwork attribution and licensing information. The relevant GPL-3.0 license text is included in [LICENSES/GPL-3.0-ClashKingAssets.txt](LICENSES/GPL-3.0-ClashKingAssets.txt).
+It does not invent a percentage using guessed upgrade durations. Progress can be shown from the first moment the app observed a particular upgrade running. If an upgrade is first imported after it started, its true start is unknown.
 
-Clash of Clans, Supercell's names, marks and game content remain the property of their respective owners. See the [Supercell Fan Content Policy](https://supercell.com/en/fan-content-policy/).
+Widget refresh is scheduled, not continuous. WorkManager uses a 15-minute periodic interval, but Android may delay background work and launcher redraws. This is not a per-second live countdown.
 
-## Build from source
+## Documentation
 
-### Requirements
+| Guide | Description |
+| --- | --- |
+| [Documentation index](docs/README.md) | Complete documentation map. |
+| [Getting started](docs/user-guide/GETTING-STARTED.md) | Install, export, import and add the widget. |
+| [Accounts and widgets](docs/user-guide/ACCOUNTS-AND-WIDGETS.md) | Multi-account storage and per-widget selection. |
+| [FAQ and troubleshooting](docs/user-guide/FAQ.md) | Common questions and limitations. |
+| [Architecture overview](docs/architecture/OVERVIEW.md) | Components, data flow and security boundaries. |
+| [Building and testing](docs/development/BUILDING-AND-TESTING.md) | Development setup, Gradle commands and CI. |
+| [0.6.0 release notes](docs/releases/0.6.0.md) | User-facing changes in the current prerelease. |
+| [0.6.0 verification](docs/verification/0.6.0.md) | Automated release checks and manual acceptance areas. |
+| [Changelog](CHANGELOG.md) | Version history. |
+| [Contributing](CONTRIBUTING.md) | How to propose and validate changes. |
+| [Security policy](SECURITY.md) | Responsible vulnerability reporting. |
 
-- JDK 17
-- Android SDK Platform 35
-- Android SDK Build Tools 35.0.0
-- Gradle is provided by the included wrapper
+## Built with Kotlin
 
-Open the project in Android Studio, or run these commands from the repository root:
+COCwidgt is a native Android application using **Kotlin**, **Jetpack Compose**, **Jetpack Glance AppWidget**, **AndroidX WorkManager** and Android's local storage APIs.
+
+- **Minimum Android:** API 29.
+- **Compile / target SDK:** API 35.
+- **JDK and JVM target:** 17.
+- **Gradle:** use the committed wrapper.
+
+To build and test locally:
 
 ```bash
 ./gradlew testDebugUnitTest
 ./gradlew lintDebug
 ./gradlew assembleDebug
-./gradlew assembleRelease
 ```
 
-The debug APK is produced at:
+The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`. See the [development guide](docs/development/BUILDING-AND-TESTING.md) for SDK setup and release-signing notes.
 
-`app/build/outputs/apk/debug/app-debug.apk`
+## Project status and limitations
 
-The release build enables code shrinking and resource shrinking. To sign a local release build, provide the signing values as environment variables:
+- COCwidgt is currently **Android-only**.
+- Village state comes from manual exports; there is no live game synchronization.
+- Catalogue coverage is maintained and may not include every game entity or future game update.
+- Unknown catalogue IDs are retained and shown with neutral fallback presentation.
+- Widget rendering and refresh timing depend on Android and the installed launcher.
+- The TH19 export representation for selecting a Town Hall visual variant has not yet been validated against a physical TH19 export sample.
 
-- `RELEASE_STORE_FILE`
-- `RELEASE_STORE_PASSWORD`
-- `RELEASE_KEY_ALIAS`
-- `RELEASE_KEY_PASSWORD`
+## Credits, assets and licensing
 
-Keep the keystore and passwords out of source control and build logs. A release build made without signing credentials is not a distributable signed release.
+Selected Clash of Clans artwork is bundled from the community-maintained [ClashKingAssets](https://github.com/ClashKingInc/ClashKingAssets) project. TH19 additions are attributed to the audited upstream revision documented in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-## CI and signed prereleases
+The corresponding GPL-3.0 license text is included at [LICENSES/GPL-3.0-ClashKingAssets.txt](LICENSES/GPL-3.0-ClashKingAssets.txt). See [third-party notices](THIRD_PARTY_NOTICES.md) for source mapping and dependency notes.
 
-The Android CI workflow runs unit tests, lint and a debug build for pull requests and pushes to `main`.
-
-The version-specific signed prerelease workflows use GitHub Actions repository secrets:
-
-- `RELEASE_KEYSTORE_BASE64` — base64-encoded Android release keystore
-- `RELEASE_STORE_PASSWORD` — keystore password
-- `RELEASE_KEY_ALIAS` — signing key alias
-- `RELEASE_KEY_PASSWORD` — signing key password
-
-The v0.6.0 workflow builds and verifies the signed APK, checks its package name, version metadata and original signing certificate, then publishes `cocw0.6.0.apk` with a SHA-256 checksum file. The release is marked as a **GitHub prerelease**, not a stable release.
-
-## Known limitations
-
-- The catalogue and bundled artwork cover a maintained subset of game entities. Unsupported IDs remain visible as unknown items.
-- The game export is a manual snapshot. Import again after gameplay to refresh the displayed village state.
-- The export does not include original total upgrade durations, so progress is based on first observation rather than a guessed total.
-- Periodic refresh uses WorkManager and is subject to Android scheduling and launcher behavior; it is not a per-second real-time update.
-- Widget sizing and rendering depend on the launcher. Physical-device checks are still needed across different launchers and screen sizes.
+Clash of Clans, Supercell's names, marks and game content remain the property of their respective owners.
 
 ## Disclaimer
 
-COCwidgt is an unofficial fan-made companion project and is not endorsed by Supercell. Clash of Clans and all related assets, names and marks belong to Supercell and their respective owners.
+COCwidgt is an unofficial fan-made project. It is not affiliated with, endorsed by, sponsored by or specifically approved by Supercell. Use of Supercell game content is subject to the [Supercell Fan Content Policy](https://supercell.com/en/fan-content-policy/).
+
+---
+
+<div align="center">
+<sub>Made by <a href="https://github.com/stokonn">stokonn</a>.</sub>
+</div>
